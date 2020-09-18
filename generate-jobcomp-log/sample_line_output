@@ -1,0 +1,2 @@
+JobId=5781551 UserId=jhauschild(45208) GroupId=ucb(501) Name=tW_BLG_DMRG JobState=COMPLETED Partition=savio2 TimeLimit=720 StartTime=2020-04-01T10:56:01 EndTime=2020-04-01T11:00:15 NodeList=n0061.savio2 NodeCnt=1 ProcCnt=24 WorkDir=/global/scratch/jhauschild/BLG_DMRG/DMRG_runs/polariton_JH/Ly_4/w0_0.17/./ ReservationName= Gres= Account=fc_mps2 QOS=savio_normal WcKey= Cluster=brc SubmitTime=2020-04-01T10:33:18 EligibleTime=2020-04-01T10:33:19 ArrayJobId=5781515 ArrayTaskId=1 DerivedExitCode=0:0 ExitCode=0:0
+
