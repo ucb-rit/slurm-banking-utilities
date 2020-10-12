@@ -10,7 +10,8 @@ import urllib
 import json
 
 
-VERSION = 1.3
+DEBUG = False
+VERSION = 1.4
 docstr = '''
 [version: {}]
 '''.format(VERSION)
@@ -64,6 +65,11 @@ def to_timestamp(date_time):
         return calendar.timegm(time.strptime(date_time, timestamp_format_minimal))
 
 
+def to_timestring(timestamp):
+    date_time = datetime.datetime.fromtimestamp(timestamp)
+    return date_time.strftime(timestamp_format_complete)
+
+
 def get_account_start(account, user=None):
     request_params = {
         'account': account
@@ -89,6 +95,20 @@ def get_account_start(account, user=None):
         return None
 
     return target_start_date.split('.')[0] if '.' in target_start_date else target_start_date
+
+
+def utc2local(utc):
+    utc = datetime.datetime.utcfromtimestamp(utc)
+    epoch = time.mktime(utc.timetuple())
+    offset = datetime.datetime.fromtimestamp(epoch) - datetime.datetime.utcfromtimestamp(epoch)
+
+    local = utc + offset
+    local = calendar.timegm(local.timetuple())
+
+    if DEBUG:
+        print '[utc2local] utc_timestamp:', epoch, 'local_timestamp:', local
+
+    return local
 
 
 current_month = datetime.datetime.now().month
@@ -130,6 +150,10 @@ if calculate_account_start_hide_allocation:
     if target_start_date is not None:
         _start = target_start_date
         start = to_timestamp(_start)
+        start = utc2local(start)
+        _start = to_timestring(utc2local(start))
+    elif DEBUG:
+        print('[get_account_start(account)] failed...')
 
 # both account and user query, calculate single start date
 if calculate_user_account_start:
@@ -137,7 +161,9 @@ if calculate_user_account_start:
     if target_start_date is not None:
         _start = target_start_date
         start = to_timestamp(_start)
-
+        _start = to_timestring(utc2local(start))
+    elif DEBUG:
+        print('[get_account_start(account)] failed...')
 
 if not user and not account:
     user = getpass.getuser()
