@@ -102,8 +102,8 @@ def utc2local(utc):
     epoch = time.mktime(utc.timetuple())
     offset = datetime.datetime.fromtimestamp(epoch) - datetime.datetime.utcfromtimestamp(epoch)
 
-    local = utc + offset
-    local = calendar.timegm(local.timetuple())
+    local = utc + datetime.timedelta(hours=-7) # + offset
+    local = time.mktime(local.timetuple()) # calendar.timegm(local.timetuple())
 
     if DEBUG:
         print '[utc2local] utc_timestamp:', epoch, 'local_timestamp:', local
