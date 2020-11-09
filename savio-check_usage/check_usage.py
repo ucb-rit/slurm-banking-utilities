@@ -11,7 +11,7 @@ import json
 
 
 DEBUG = False
-VERSION = 1.4
+VERSION = 1.5
 docstr = '''
 [version: {}]
 '''.format(VERSION)
@@ -102,8 +102,8 @@ def utc2local(utc):
     epoch = time.mktime(utc.timetuple())
     offset = datetime.datetime.fromtimestamp(epoch) - datetime.datetime.utcfromtimestamp(epoch)
 
-    local = utc + datetime.timedelta(hours=-7) # + offset
-    local = time.mktime(local.timetuple()) # calendar.timegm(local.timetuple())
+    local = utc + datetime.timedelta(hours=-7)  # + offset
+    local = time.mktime(local.timetuple())  # calendar.timegm(local.timetuple())
 
     if DEBUG:
         print '[utc2local] utc_timestamp:', epoch, 'local_timestamp:', local
@@ -149,9 +149,9 @@ if calculate_account_start_hide_allocation:
     target_start_date = get_account_start(account)
     if target_start_date is not None:
         _start = target_start_date
-        start = to_timestamp(_start)
-        start = utc2local(start)
-        _start = to_timestring(utc2local(start))
+        _mystart = to_timestamp(_start)
+        _mystart = utc2local(_mystart)
+        _start = to_timestring(_mystart)
     elif DEBUG:
         print('[get_account_start(account)] failed...')
 
@@ -160,10 +160,11 @@ if calculate_user_account_start:
     target_start_date = get_account_start(account, user)
     if target_start_date is not None:
         _start = target_start_date
-        start = to_timestamp(_start)
-        _start = to_timestring(utc2local(start))
+        _mystart = to_timestamp(_start)
+        _mystart = utc2local(_mystart)
+        _start = to_timestring(_mystart)
     elif DEBUG:
-        print('[get_account_start(account)] failed...')
+        print('[get_account_start(account, user)] failed...')
 
 if not user and not account:
     user = getpass.getuser()
@@ -486,3 +487,4 @@ for req_type in output_headers.keys():
 
     except ValueError, e:
         pass  # json decode error
+
