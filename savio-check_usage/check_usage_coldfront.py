@@ -10,7 +10,7 @@ import urllib
 import json
 
 
-DEBUG = True
+DEBUG = False
 VERSION = 2.0
 docstr = '''
 [version: {}]
@@ -44,12 +44,12 @@ def check_valid_date(s):
 
     try:
         complete = datetime.datetime.strptime(s, timestamp_format_complete)
-    except ValueError:
+    except Exception:
         pass
 
     try:
         minimal = datetime.datetime.strptime(s, timestamp_format_minimal)
-    except ValueError:
+    except Exception:
         pass
 
     if not complete and not minimal:  # doesn't fit either format
@@ -66,48 +66,23 @@ def to_timestamp(date_time):
         return calendar.timegm(time.strptime(date_time, timestamp_format_minimal))
 
 
-current_month = datetime.datetime.now().month
-current_year = datetime.datetime.now().year
-default_start = current_year if current_month >= 6 else (current_year - 1)
+def to_timestring(timestamp):
+    date_time = datetime.datetime.fromtimestamp(timestamp)
+    return date_time.strftime(timestamp_format_complete)
 
-parser = argparse.ArgumentParser(description=docstr)
-parser.add_argument('-u', dest='user',
-                    help='check usage of this user')
-parser.add_argument('-a', dest='account',
-                    help='check usage of this account')
 
-parser.add_argument('-E', dest='expand', action='store_true',
-                    help='expand user/account usage')
-parser.add_argument('-s', dest='start', type=check_valid_date,
-                    help='starttime for the query period (YYYY-MM-DD[THH:MM:SS])',
-                    default='{}-06-01T00:00:00'.format(default_start))
-parser.add_argument('-e', dest='end', type=check_valid_date,
-                    help='endtime for the query period (YYYY-MM-DD[THH:MM:SS])',
-                    default=datetime.datetime.now()
-                    .strftime(timestamp_format_complete))
-parsed = parser.parse_args()
-user = parsed.user
-account = parsed.account
-expand = parsed.expand
-_start = parsed.start
-_end = parsed.end
-start = to_timestamp(_start)
-end = to_timestamp(_end)
+def utc2local(utc):
+    utc = datetime.datetime.utcfromtimestamp(utc)
+    epoch = time.mktime(utc.timetuple())
+    offset = datetime.datetime.fromtimestamp(epoch) - datetime.datetime.utcfromtimestamp(epoch)
 
-# defaults
-default_start_used = _start == '{}-06-01T00:00:00'.format(default_start)
-if not user and not account:
-    user = getpass.getuser()
+    local = utc + datetime.timedelta(hours=-7)  # + offset
+    local = time.mktime(local.timetuple())  # calendar.timegm(local.timetuple())
 
-output_headers = {}
-if user:
-    output_header = 'Usage for USER {} [{}, {}]:'.format(user, _start, _end)
-    output_headers['user'] = output_header
+    if DEBUG:
+        print '[utc2local] utc_timestamp:', epoch, 'local_timestamp:', local
 
-if account:
-    output_header = 'Usage for ACCOUNT {} [{}, {}]:'.format(
-        account, _start, _end)
-    output_headers['account'] = output_header
+    return local
 
 
 def paginate_requests(url, params):
@@ -158,6 +133,96 @@ def single_request(url, params=None):
             print('[single_request] ERR: {}'.format(e))
 
     return response['results']
+
+
+def get_account_start(account, user=None):
+    if user:
+        allocation_id_url = ALLOCATION_USERS_ENDPOINT
+        response = single_request(allocation_id_url, {'project': account, 'user': user})[0]
+    else:
+        allocation_id_url = ALLOCATION_ENDPOINT
+        response = single_request(allocation_id_url, {'project': account, 'resources': 'Savio Compute'})[0]
+
+    allocation_id = response['id']
+
+    allocation_url = allocation_id_url + '/{}/attributes'.format(allocation_id)
+    response = single_request(allocation_url, {'type': 'Service Units'})[0]
+    allocation = response['value']
+    allocation_attribute_id = response['id']
+
+    account_usage_url = allocation_url + '/{}/history'.format(allocation_attribute_id)
+    response = paginate_requests(account_usage_url, {})[-1]
+    creation = response['history_date']
+    return creation.split('.')[0] if '.' in creation else creation
+
+
+current_month = datetime.datetime.now().month
+current_year = datetime.datetime.now().year
+default_start = current_year if current_month >= 6 else (current_year - 1)
+
+parser = argparse.ArgumentParser(description=docstr)
+parser.add_argument('-u', dest='user',
+                    help='check usage of this user')
+parser.add_argument('-a', dest='account',
+                    help='check usage of this account')
+
+parser.add_argument('-E', dest='expand', action='store_true',
+                    help='expand user/account usage')
+parser.add_argument('-s', dest='start', type=check_valid_date,
+                    help='starttime for the query period (YYYY-MM-DD[THH:MM:SS])',
+                    default='{}-06-01T00:00:00'.format(default_start))
+parser.add_argument('-e', dest='end', type=check_valid_date,
+                    help='endtime for the query period (YYYY-MM-DD[THH:MM:SS])',
+                    default=datetime.datetime.now()
+                    .strftime(timestamp_format_complete))
+parsed = parser.parse_args()
+user = parsed.user
+account = parsed.account
+expand = parsed.expand
+_start = parsed.start
+_end = parsed.end
+start = to_timestamp(_start)
+end = to_timestamp(_end)
+
+default_start_used = _start == '{}-06-01T00:00:00'.format(default_start)
+calculate_account_start_hide_allocation = default_start and account and not user
+calculate_user_account_start = default_start and account and user
+
+# just account information, calculate single start date
+if calculate_account_start_hide_allocation:
+    target_start_date = get_account_start(account)
+    if target_start_date is not None:
+        _start = target_start_date
+        _mystart = to_timestamp(_start)
+        _mystart = utc2local(_mystart)
+        _start = to_timestring(_mystart)
+    elif DEBUG:
+        print('[get_account_start(account)] failed...')
+
+# both account and user query, calculate single start date
+if calculate_user_account_start:
+    target_start_date = get_account_start(account, user)
+    if target_start_date is not None:
+        _start = target_start_date
+        _mystart = to_timestamp(_start)
+        _mystart = utc2local(_mystart)
+        _start = to_timestring(_mystart)
+    elif DEBUG:
+        print('[get_account_start(account, user)] failed...')
+
+# defaults
+if not user and not account:
+    user = getpass.getuser()
+
+output_headers = {}
+if user:
+    output_header = 'Usage for USER {} [{}, {}]:'.format(user, _start, _end)
+    output_headers['user'] = output_header
+
+if account:
+    output_header = 'Usage for ACCOUNT {} [{}, {}]:'.format(
+        account, _start, _end)
+    output_headers['account'] = output_header
 
 
 def get_cpu_amount_usage(user=None, account=None):
