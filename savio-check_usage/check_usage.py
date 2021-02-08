@@ -381,6 +381,9 @@ def process_account_query():
 
         user_dict = {}
         for single in responses:
+            if single['user_account']['user'] is None:
+                continue
+
             user_dict[single['user_account']['user']] = True
             percentage = 0.0
             try:

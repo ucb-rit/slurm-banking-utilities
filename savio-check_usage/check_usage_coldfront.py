@@ -284,6 +284,9 @@ def process_account_query():
         user_list = paginate_requests(user_url, {'project': account})
 
         for user in user_list:
+            if user['user'] is None:
+                continue
+
             user_name = user['user']
             user_jobs, user_cpu, user_usage = get_cpu_amount_usage(user_name, account)
 
