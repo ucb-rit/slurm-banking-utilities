@@ -152,6 +152,7 @@ if calculate_account_start_hide_allocation:
         _mystart = to_timestamp(_start)
         _mystart = utc2local(_mystart)
         _start = to_timestring(_mystart)
+        start = to_timestamp(_start)
     elif DEBUG:
         print('[get_account_start(account)] failed...')
 
@@ -163,6 +164,7 @@ if calculate_user_account_start:
         _mystart = to_timestamp(_start)
         _mystart = utc2local(_mystart)
         _start = to_timestring(_mystart)
+        start = to_timestamp(_start)
     elif DEBUG:
         print('[get_account_start(account, user)] failed...')
 
