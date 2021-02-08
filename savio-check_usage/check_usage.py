@@ -26,15 +26,15 @@ timestamp_format_minimal = '%Y-%m-%d'
 
 
 def red_str(vector):
-    return "\033[91m {}\033[00m".format(vector)
+    return "\033[91m{}\033[00m".format(vector)
 
 
 def green_str(vector):
-    return "\033[92m {}\033[00m".format(vector)
+    return "\033[92m{}\033[00m".format(vector)
 
 
 def yellow_str(vector):
-    return "\033[93m {}\033[00m".format(vector)
+    return "\033[93m{}\033[00m".format(vector)
 
 
 def check_valid_date(s):
