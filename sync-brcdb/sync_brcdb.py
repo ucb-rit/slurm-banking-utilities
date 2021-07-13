@@ -11,9 +11,9 @@ import logging
 
 # PRICE_FILE = '/global/scratch/kmuriki/bank-config.toml'
 PRICE_FILE = '/etc/slurm/bank-config.toml'
-BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/'
+# BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/'
+BASE_URL = 'http://mybrc.brc.berkeley.edu/mybrc-rest/'
 LOG_FILE = 'updated_jobs.log'
-CONFIG_FILE = 'filter_auth.conf'
 
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     format='%(asctime)s %(levelname)-8s %(message)s',
@@ -21,14 +21,6 @@ logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
 
 print 'starting run...'
 logging.info('starting run...')
-
-if not os.path.exists(CONFIG_FILE):
-    print 'config file missing...'
-    logging.info('auth config file missing, exiting run...')
-    exit(0)
-
-with open(CONFIG_FILE, 'r') as f:
-    AUTH_TOKEN = f.read().strip()
 
 
 def calculate_cpu_time(duration, num_cpus):
@@ -115,10 +107,12 @@ def node_list_format(nodelist):
 
 
 def paginate_requests():
-    start_ts = to_dt_obj('{}-01-01T00:00:00'.format(datetime.datetime.now().year))
+    start_ts = to_dt_obj(
+        '{}-01-01T00:00:00'.format(datetime.datetime.now().year))
     current_ts = calendar.timegm(datetime.datetime.utcnow().timetuple())
 
-    request_params = {'jobstatus': 'RUNNING', 'start_time': start_ts, 'end_time': current_ts}
+    request_params = {'jobstatus': 'RUNNING',
+                      'start_time': start_ts, 'end_time': current_ts}
     url_target = BASE_URL + 'jobs?' + urllib.urlencode(request_params)
     req = urllib2.Request(url_target)
     response = json.loads(urllib2.urlopen(req).read())
@@ -142,7 +136,8 @@ def paginate_requests():
 
             if current_page > 120:
                 print 'too many jobs to update at once, rerun script after this run completes...'
-                logging.info('too many jobs to update at once, rerun script after this run completes...')
+                logging.info(
+                    'too many jobs to update at once, rerun script after this run completes...')
                 break
 
         except urllib2.URLError:
@@ -242,7 +237,7 @@ for current in out:
         'cpu_time': float(cpu_time)}
 
 
-print 'updating mybrcdb...'
+print 'updating ', len(table), 'jobs in mybrcdb...'
 logging.info('updating mybrcdb...')
 
 counter = 0
@@ -250,8 +245,6 @@ for jobid, job in table.items():
     request_data = urllib.urlencode(job)
     url_target = BASE_URL + 'jobs/' + str(jobid) + '/'
     req = urllib2.Request(url=url_target, data=request_data)
-
-    req.add_header('Authorization', 'Token ' + AUTH_TOKEN)
     req.get_method = lambda: 'PUT'
 
     try:
