@@ -11,7 +11,7 @@ import logging
 
 # PRICE_FILE = '/global/scratch/kmuriki/bank-config.toml'
 PRICE_FILE = '/etc/slurm/bank-config.toml'
-BASE_URL = 'http://mybrc.brc.berkeley.edu/mybrc-rest/'
+BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/'
 LOG_FILE = 'updated_jobs.log'
 CONFIG_FILE = 'filter_auth.conf'
 
