@@ -6,19 +6,61 @@ import json
 import datetime
 import calendar
 import subprocess
-import os
+import argparse
 import logging
 
 DEBUG = False
-
-# PRICE_FILE = '/global/scratch/kmuriki/bank-config.toml'
 PRICE_FILE = '/etc/slurm/bank-config.toml'
 BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/'
 LOG_FILE = None if DEBUG else 'updated_jobs.log'
 
+timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
+timestamp_format_minimal = '%Y-%m-%d'
+docstr = '''
+Sync jobs between MyBRC-DB with Slurm-DB.
+'''
+
+
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     format='%(asctime)s %(levelname)-8s %(message)s',
                     datefmt='%Y-%m-%dT%H:%M:%S')
+
+
+def check_valid_date(s):
+    '''check if date is in valid format(s)'''
+    complete, minimal = None, None
+
+    try:
+        complete = datetime.datetime.strptime(s, timestamp_format_complete)
+    except Exception:
+        pass
+
+    try:
+        minimal = datetime.datetime.strptime(s, timestamp_format_minimal)
+    except Exception:
+        pass
+
+    if not complete and not minimal:
+        raise argparse.ArgumentTypeError('Invalid time specification {}'.format(s))
+    else:
+        return s
+
+
+current_month = datetime.datetime.now().month
+current_year = datetime.datetime.now().year
+default_start = current_year if current_month >= 6 else (current_year - 1)
+
+parser = argparse.ArgumentParser(description=docstr)
+parser.add_argument('-s', dest='start', type=check_valid_date,
+                    help='starttime for the query period (YYYY-MM-DD[THH:MM:SS])',
+                    default='{}-06-01T00:00:00'.format(default_start))
+parser.add_argument('-e', dest='end', type=check_valid_date,
+                    help='endtime for the query period (YYYY-MM-DD[THH:MM:SS])',
+                    default=datetime.datetime.utcnow().strftime(timestamp_format_complete))
+
+parsed = parser.parse_args()
+START = parsed.start
+END = parsed.end
 
 print 'starting run...'
 logging.info('starting run...')
@@ -30,17 +72,20 @@ def calculate_cpu_time(duration, num_cpus):
     return hours * float(num_cpus)
 
 
-def to_dt_obj(dt):
-    return calendar.timegm(time.strptime(dt, '%Y-%m-%dT%H:%M:%S'))  # utc
+def datestring_to_utc_timestamp(dt):
+    try:
+        return calendar.timegm(time.strptime(dt, timestamp_format_complete))
+    except:
+        return calendar.timegm(time.strptime(dt, timestamp_format_minimal))
 
 
-def to_dt_string(dt):
+def utc_timestamp_to_string(dt):
     candidate = datetime.datetime.utcfromtimestamp(dt)
     return candidate.strftime('%Y-%m-%dT%H:%M:%SZ'), candidate
 
 
 def calculate_time_duration(start, end):
-    return datetime.datetime.fromtimestamp(to_dt_obj(end)) - datetime.datetime.fromtimestamp(to_dt_obj(start))
+    return datetime.datetime.utcfromtimestamp(datestring_to_utc_timestamp(end)) - datetime.datetime.utcfromtimestamp(datestring_to_utc_timestamp(start))
 
 
 def get_price_per_hour(partition):
@@ -108,11 +153,11 @@ def node_list_format(nodelist):
 
 
 def paginate_requests():
-    start_ts = to_dt_obj('{}-01-01T00:00:00'.format(datetime.datetime.now().year))
-    current_ts = calendar.timegm(datetime.datetime.utcnow().timetuple())
+    start_ts = datestring_to_utc_timestamp(START)
+    end_ts = datestring_to_utc_timestamp(END)
 
     request_params = {'jobstatus': 'RUNNING',
-                      'start_time': start_ts, 'end_time': current_ts}
+                      'start_time': start_ts, 'end_time': end_ts}
     url_target = BASE_URL + 'jobs?' + urllib.urlencode(request_params)
     req = urllib2.Request(url_target)
     response = json.loads(urllib2.urlopen(req).read())
@@ -125,7 +170,7 @@ def paginate_requests():
             current_page += 1
 
             request_params = {'jobstatus': 'RUNNING', 'page': current_page,
-                              'start_time': start_ts, 'end_time': current_ts}
+                              'start_time': start_ts, 'end_time': end_ts}
             url_target = BASE_URL + '/jobs?' + urllib.urlencode(request_params)
             req = urllib2.Request(url_target)
             response = json.loads(urllib2.urlopen(req).read())
@@ -211,9 +256,9 @@ for current in out:
     cpu_time = calculate_cpu_time(duration, alloc_cpus)
     amount = calculate_amount(partition, alloc_cpus, duration)
 
-    submit, _ = to_dt_string(to_dt_obj(submit))
-    start, _start = to_dt_string(to_dt_obj(start))
-    end, _end = to_dt_string(to_dt_obj(end))
+    submit, _ = utc_timestamp_to_string(datestring_to_utc_timestamp(submit))
+    start, _start = utc_timestamp_to_string(datestring_to_utc_timestamp(start))
+    end, _end = utc_timestamp_to_string(datestring_to_utc_timestamp(end))
 
     raw_time = (_end - _start).total_seconds() / 3600
 
