@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import os
 import time
 import urllib2
 import urllib
@@ -12,7 +13,8 @@ import logging
 DEBUG = False
 PRICE_FILE = '/etc/slurm/bank-config.toml'
 BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/'
-LOG_FILE = None if DEBUG else 'updated_jobs.log'
+LOG_FILE = None if DEBUG else 'updated_jobs_coldfront.log'
+CONFIG_FILE = 'filter_auth_coldfront.conf'
 
 timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
 timestamp_format_minimal = '%Y-%m-%d'
@@ -24,6 +26,14 @@ Sync jobs between MyBRC-DB with Slurm-DB.
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     format='%(asctime)s %(levelname)-8s %(message)s',
                     datefmt='%Y-%m-%dT%H:%M:%S')
+
+if not os.path.exists(CONFIG_FILE):
+    print 'config file missing...'
+    logging.info('auth config file missing (filter_auth.conf), exiting run...')
+    exit(0)
+
+with open(CONFIG_FILE, 'r') as f:
+    AUTH_TOKEN = f.read().strip()
 
 
 def check_valid_date(s):
@@ -293,6 +303,8 @@ for jobid, job in table.items():
     request_data = urllib.urlencode(job)
     url_target = BASE_URL + 'jobs/' + str(jobid) + '/'
     req = urllib2.Request(url=url_target, data=request_data)
+
+    req.add_header('Authorization', 'Token ' + AUTH_TOKEN)
     req.get_method = lambda: 'PUT'
 
     try:
