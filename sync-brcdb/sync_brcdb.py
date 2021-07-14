@@ -14,6 +14,7 @@ PRICE_FILE = '/etc/slurm/bank-config.toml'
 # BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/'
 BASE_URL = 'http://mybrc.brc.berkeley.edu/mybrc-rest/'
 LOG_FILE = 'updated_jobs.log'
+CONFIG_FILE = 'filter_auth.conf'
 
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     format='%(asctime)s %(levelname)-8s %(message)s',
@@ -21,6 +22,14 @@ logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
 
 print 'starting run...'
 logging.info('starting run...')
+
+if not os.path.exists(CONFIG_FILE):
+    print 'config file missing...'
+    logging.info('auth config file missing (filter_auth.conf), exiting run...')
+    exit(0)
+
+with open(CONFIG_FILE, 'r') as f:
+    AUTH_TOKEN = f.read().strip()
 
 
 def calculate_cpu_time(duration, num_cpus):
@@ -245,6 +254,8 @@ for jobid, job in table.items():
     request_data = urllib.urlencode(job)
     url_target = BASE_URL + 'jobs/' + str(jobid) + '/'
     req = urllib2.Request(url=url_target, data=request_data)
+
+    req.add_header('Authorization', 'Token ' + AUTH_TOKEN)
     req.get_method = lambda: 'PUT'
 
     try:
