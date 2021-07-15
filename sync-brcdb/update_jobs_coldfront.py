@@ -12,14 +12,14 @@ import logging
 
 DEBUG = False
 PRICE_FILE = '/etc/slurm/bank-config.toml'
-BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/'
-LOG_FILE = None if DEBUG else 'updated_jobs_coldfront.log'
-CONFIG_FILE = 'filter_auth_coldfront.conf'
+BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/' if DEBUG else 'https://mybrc.brc.berkeley.edu/api/'
+LOG_FILE = 'update_jobs_coldfront_debug.log' if DEBUG else 'update_jobs_coldfront.log'
+CONFIG_FILE = 'update_jobs_coldfront.conf'
 
 timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
 timestamp_format_minimal = '%Y-%m-%d'
 docstr = '''
-Sync jobs between MyBRC-DB with Slurm-DB.
+Sync running jobs between MyBRC-DB with Slurm-DB.
 '''
 
 
@@ -28,8 +28,8 @@ logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     datefmt='%Y-%m-%dT%H:%M:%S')
 
 if not os.path.exists(CONFIG_FILE):
-    print 'config file missing...'
-    logging.info('auth config file missing (filter_auth.conf), exiting run...')
+    print 'config file {} missing...'.format(CONFIG_FILE)
+    logging.info('auth config file missing [{}], exiting run...'.format(CONFIG_FILE))
     exit(0)
 
 with open(CONFIG_FILE, 'r') as f:
@@ -197,6 +197,9 @@ def paginate_requests():
         except urllib2.URLError:
             response['next'] = None
 
+            if DEBUG:
+                print '[paginate_requests()] failed: {}'.format(e)
+
     return job_table
 
 
@@ -229,7 +232,7 @@ for line in lines:
 central = central[:-1]
 
 out = subprocess.Popen(['sacct', '-j', central,
-                        '--format=JobIdRaw,Submit,Start,End,UID,Account,State,Partition,QOS,NodeList,AllocCPUS,ReqNodes,AllocNodes,CPUTimeRAW,CPUTime', '-n', '-P'],
+                        '--format=JobId,Submit,Start,End,UID,Account,State,Partition,QOS,NodeList,AllocCPUS,ReqNodes,AllocNodes,CPUTimeRAW,CPUTime', '-n', '-P'],
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
 
@@ -316,6 +319,6 @@ for jobid, job in table.items():
             print '\tprogress:', counter, '/', len(table)
 
     except urllib2.HTTPError, e:
-        logging.warning('ERROR occured for jobid: {} REASON: {}'.format(jobid, e.reason))
+        logging.error('ERROR occured for jobid: {} REASON: {}'.format(jobid, e.reason))
 
 logging.info('run complete, updated {} jobs'.format(counter))
