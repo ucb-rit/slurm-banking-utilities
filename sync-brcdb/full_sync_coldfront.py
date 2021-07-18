@@ -195,7 +195,7 @@ def single_request(url, params=None):
 def get_project_start(project):
     allocations_url = BASE_URL + 'allocations/'
     response = single_request(allocations_url, {'project': project, 'resources': 'Savio Compute'})
-    if len(response) == 0:
+    if not response or len(response) == 0:
         if DEBUG:
             print '[get_project_start({})] ERR'.format(project)
 
@@ -205,11 +205,17 @@ def get_project_start(project):
     allocation_id = response[0]['id']
     allocation_attribute_url = allocations_url + '{}/attributes/'.format(allocation_id)
     response = single_request(allocation_attribute_url, {'type': 'Service Units'})
+    if not response or len(response) == 0:
+        if DEBUG:
+            print '[get_project_start({})] ERR'.format(project)
+
+        logging.error('[get_project_start({})] ERR'.format(project))
+        return None
 
     allocation_attribute_id = response[0]['id']
     account_usage_url = allocation_attribute_url + '{}/history'.format(allocation_attribute_id)
     response = paginate_requests(account_usage_url)
-    if len(response) == 0:
+    if not response or len(response) == 0:
         if DEBUG:
             print '[get_project_start({})] ERR'.format(project)
 

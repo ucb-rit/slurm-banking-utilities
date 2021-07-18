@@ -19,11 +19,10 @@ docstr = '''
 [version: {}]
 '''.format(VERSION)
 
-# BASE_URL = 'http://localhost:8880/api'
 BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/' if DEBUG else 'https://mybrc.brc.berkeley.edu/api/'
-ALLOCATION_ENDPOINT = BASE_URL + '/allocations'
-ALLOCATION_USERS_ENDPOINT = BASE_URL + '/allocation_users'
-JOB_ENDPOINT = BASE_URL + '/jobs'
+ALLOCATION_ENDPOINT = BASE_URL + 'allocations/'
+ALLOCATION_USERS_ENDPOINT = BASE_URL + 'allocation_users/'
+JOB_ENDPOINT = BASE_URL + 'jobs/'
 
 timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
 timestamp_format_minimal = '%Y-%m-%d'
@@ -70,7 +69,7 @@ def to_timestamp(date_time):
 
 
 def to_timestring(timestamp):
-    date_time = datetime.datetime.fromtimestamp(timestamp)
+    date_time = datetime.datetime.utcfromtimestamp(timestamp)
     return date_time.strftime(timestamp_format_complete)
 
 
@@ -83,7 +82,7 @@ def utc2local(utc):
     local = time.mktime(local.timetuple())  # calendar.timegm(local.timetuple())
 
     if DEBUG:
-        print '[utc2local] utc_timestamp:', epoch, 'local_timestamp:', local
+        print('[utc2local] utc_timestamp: {} local_timestamp: {}'.format(epoch, local))
 
     return local
 
@@ -97,28 +96,28 @@ def paginate_requests(url, params):
     except Exception, e:
         response = {'results': None}
         if DEBUG:
-            print('[paginate_requests] ERR: {}'.format(e))
+            print('[paginate_requests({}, {})] ERR: {}'.format(url, params, e))
 
-        return None
+        return []
 
     next_page = 2
-    table = response['results']
+    results = response['results']
     while response['next'] is not None:
         params['page'] = next_page
         request_url = url + '?' + urllib.urlencode(params)
         request = urllib2.Request(request_url)
 
         try:
-            response = json.loads(urllib2.urlopen(req).read())
-            table.extend(response['results'])
+            response = json.loads(urllib2.urlopen(request).read())
+            results.extend(response['results'])
             next_page += 1
-        except urllib2.URLError:
+        except urllib2.URLError, e:
             response['next'] = None
 
             if DEBUG:
-                print('[paginate_requests] ERR: {}'.format(e))
+                print('[paginate_requests({}, {})] ERR: {}'.format(url, params, e))
 
-    return table
+    return results
 
 
 def single_request(url, params=None):
@@ -133,29 +132,45 @@ def single_request(url, params=None):
         response = {'results': None}
 
         if DEBUG:
-            print('[single_request] ERR: {}'.format(e))
+            print('[single_request({}, {})] ERR: {}'.format(url, params, e))
 
     return response['results']
 
 
-def get_account_start(account, user=None):
+def get_project_start(project, user=None):
     if user:
         allocation_id_url = ALLOCATION_USERS_ENDPOINT
-        response = single_request(allocation_id_url, {'project': account, 'user': user})[0]
+        params = {'project': project, 'user': user}
     else:
         allocation_id_url = ALLOCATION_ENDPOINT
-        response = single_request(allocation_id_url, {'project': account, 'resources': 'Savio Compute'})[0]
+        params = {'project': project, 'resources': 'Savio Compute'}
 
-    allocation_id = response['id']
+    response = single_request(allocation_id_url, params)
+    if not response or len(response) == 0:
+        if DEBUG:
+            print('[get_project_start({}, {})] ERR'.format(project, user))
 
-    allocation_url = allocation_id_url + '/{}/attributes'.format(allocation_id)
-    response = single_request(allocation_url, {'type': 'Service Units'})[0]
-    allocation = response['value']
-    allocation_attribute_id = response['id']
+        return None
 
-    account_usage_url = allocation_url + '/{}/history'.format(allocation_attribute_id)
-    response = paginate_requests(account_usage_url, {})[-1]
-    creation = response['history_date']
+    allocation_id = response[0]['id']
+    allocation_url = allocation_id_url + '{}/attributes/'.format(allocation_id)
+    response = single_request(allocation_url, {'type': 'Service Units'})
+    if not response or len(response) == 0:
+        if DEBUG:
+            print('[get_project_start({}, {})] ERR'.format(project, user))
+
+        return None
+
+    allocation_attribute_id = response[0]['id']
+    account_usage_url = allocation_url + '{}/history/'.format(allocation_attribute_id)
+    response = paginate_requests(account_usage_url, {})
+    if len(response) == 0:
+        if DEBUG:
+            print('[get_project_start({}, {})] ERR'.format(project, user))
+
+        return None
+
+    creation = response[-1]['history_date']
     return creation.split('.')[0] if '.' in creation else creation
 
 
@@ -188,32 +203,40 @@ start = to_timestamp(_start)
 end = to_timestamp(_end)
 
 default_start_used = _start == '{}-06-01T00:00:00'.format(default_start)
-calculate_account_start_hide_allocation = default_start and account and not user
+calculate_account_start_hide_allocation = default_start_used and account and not user
 calculate_user_account_start = default_start and account and user
 
 # just account information, calculate single start date
 if calculate_account_start_hide_allocation:
-    target_start_date = get_account_start(account)
+    target_start_date = get_project_start(account)
     if target_start_date is not None:
         _start = target_start_date
+
+        # utc
         _mystart = to_timestamp(_start)
         _mystart = utc2local(_mystart)
+
+        # local
         _start = to_timestring(_mystart)
         start = to_timestamp(_start)
     elif DEBUG:
-        print('[get_account_start(account)] failed...')
+        print('[get_account_start({})] ERR'.format(account))
 
 # both account and user query, calculate single start date
 if calculate_user_account_start:
-    target_start_date = get_account_start(account, user)
+    target_start_date = get_project_start(account, user)
     if target_start_date is not None:
         _start = target_start_date
+
+        # utc
         _mystart = to_timestamp(_start)
         _mystart = utc2local(_mystart)
+
+        # local
         _start = to_timestring(_mystart)
         start = to_timestamp(_start)
     elif DEBUG:
-        print('[get_account_start(account, user)] failed...')
+        print('[get_account_start({}, {})] ERR'.format(account, user))
 
 # defaults
 if not user and not account:
@@ -225,12 +248,11 @@ if user:
     output_headers['user'] = output_header
 
 if account:
-    output_header = 'Usage for ACCOUNT {} [{}, {}]:'.format(
-        account, _start, _end)
+    output_header = 'Usage for ACCOUNT {} [{}, {}]:'.format(account, _start, _end)
     output_headers['account'] = output_header
 
 
-def get_cpu_amount_usage(user=None, account=None):
+def get_cpu_usage(user=None, account=None):
     params = {'start_time': start, 'end_time': end}
     if user:
         params['user'] = user
@@ -244,10 +266,11 @@ def get_cpu_amount_usage(user=None, account=None):
     try:
         response = json.loads(urllib2.urlopen(request).read())
     except Exception, e:
-        response = {'count': 0, 'total_cpu_time': 0, 'response': [], 'next': None}
+        response = {'count': 0, 'total_cpu_time': 0, 'total_amount': 0,
+                    'response': [], 'next': None}
 
         if DEBUG:
-            print('[get_cpu_usage] ERR: {}'.format(e))
+            print('[get_cpu_usage({}, {})] ERR: {}'.format(user, account, e))
 
     job_count = response['count']
     total_cpu = response['total_cpu_time']
@@ -258,24 +281,41 @@ def get_cpu_amount_usage(user=None, account=None):
 
 def process_account_query():
     allocation_id_url = ALLOCATION_ENDPOINT
-    response = single_request(allocation_id_url, {'project': account, 'resources': 'Savio Compute'})[0]
-    allocation_id = response['id']
+    response = single_request(allocation_id_url, {'project': account, 'resources': 'Savio Compute'})
+    if not response or len(response) == 0:
+        if DEBUG:
+            print('[process_account_query()] ERR')
 
-    allocation_url = allocation_id_url + '/{}/attributes'.format(allocation_id)
-    response = single_request(allocation_url, {'type': 'Service Units'})[0]
-    allocation = response['value']
-    allocation_attribute_id = response['id']
+        raise urllib2.URLError('Backend Error, contact BRC Support (brc-hpc-help@berkeley.edu).')
+
+    allocation_id = response[0]['id']
+    allocation_url = allocation_id_url + '{}/attributes/'.format(allocation_id)
+    response = single_request(allocation_url, {'type': 'Service Units'})
+    if not response or len(response) == 0:
+        if DEBUG:
+            print('[process_account_query()] ERR')
+
+        raise urllib2.URLError('Backend Error, contact BRC Support (brc-hpc-help@berkeley.edu).')
+
+    allocation = response[0]['value']
+    allocation_attribute_id = response[0]['id']
     allocation = int(float(allocation))
 
     if 'ac_' in account or 'co_' in account:
         # get usage from history
-        account_usage_url = allocation_url + '/{}/history'.format(allocation_attribute_id)
-        response = single_request(account_usage_url, None)[0]
-        account_usage = response['value']
+        account_usage_url = allocation_url + '{}/history/'.format(allocation_attribute_id)
+        response = single_request(account_usage_url, None)
+        if not response or len(response) == 0:
+            if DEBUG:
+                print('[process_account_query()] ERR')
+
+            raise urllib2.URLError('Backend Error, contact BRC Support (brc-hpc-help@berkeley.edu).')
+
+        account_usage = response[0]['value']
         job_count, cpu_usage = 0, 0.0
     else:
         # get usage from jobs
-        job_count, cpu_usage, account_usage = get_cpu_amount_usage(account=account)
+        job_count, cpu_usage, account_usage = get_cpu_usage(account=account)
 
     if not default_start_used:
         print output_headers['account'], job_count, 'jobs,', '{:.2f}'.format(cpu_usage), 'CPUHrs,', account_usage, 'SUs.'
@@ -291,7 +331,7 @@ def process_account_query():
                 continue
 
             user_name = user['user']
-            user_jobs, user_cpu, user_usage = get_cpu_amount_usage(user_name, account)
+            user_jobs, user_cpu, user_usage = get_cpu_usage(user_name, account)
 
             percentage = 0.0
             try:
@@ -307,13 +347,12 @@ def process_account_query():
                 color_fn = yellow_str
 
             percentage = color_fn("{:.2f}".format(percentage))
-            print '\tUsage for USER {} in ACCOUNT {} [{}, {}]: {} jobs, {:.2f} CPUHrs, {} ({}%) SUs.'\
-                .format(user_name, account, _start, _end,
-                        user_jobs, user_cpu, user_usage, percentage)
+            print('\tUsage for USER {} in ACCOUNT {} [{}, {}]: {} jobs, {:.2f} CPUHrs, {} ({}%) SUs.'
+                  .format(user_name, account, _start, _end, user_jobs, user_cpu, user_usage, percentage))
 
 
 def process_user_query():
-    total_jobs, total_cpu, total_usage = get_cpu_amount_usage(user)
+    total_jobs, total_cpu, total_usage = get_cpu_usage(user)
     print output_headers['user'], total_jobs, 'jobs,', '{:.2f}'.format(total_cpu), 'CPUHrs,', total_usage, 'SUs used.'
 
     if expand:
@@ -322,33 +361,35 @@ def process_user_query():
 
         for allocation in response:
             allocation_account = allocation['project']
-            allocation_jobs, allocation_cpu, allocation_usage = get_cpu_amount_usage(user, allocation_account)
+            allocation_jobs, allocation_cpu, allocation_usage = get_cpu_usage(user, allocation_account)
 
-            print '\tUsage for USER {} in ACCOUNT {} [{}, {}]: {} jobs, {:.2f} CPUHrs, {} SUs.' \
-                .format(user, allocation_account, _start, _end, allocation_jobs,
-                        allocation_cpu, allocation_usage)
+            print('\tUsage for USER {} in ACCOUNT {} [{}, {}]: {} jobs, {:.2f} CPUHrs, {} SUs.'
+                  .format(user, allocation_account, _start, _end, allocation_jobs, allocation_cpu, allocation_usage))
 
 
 for req_type in output_headers.keys():
     try:
         if start > end:
-            print 'ERROR: Start time ({}) requested is after end time ({}).'.format(_start, _end)
+            print('ERROR: Start time ({}) requested is after end time ({}).'.format(_start, _end))
             exit(0)
 
         if to_timestamp('2020-06-01') > start:
-            print 'INFO: Information might be inaccurate, for accurate information contact BRC support (brc-hpc-help@berkeley.edu).'
+            print('INFO: Information might be inaccurate, for accurate information contact BRC support (brc-hpc-help@berkeley.edu).')
 
         if req_type == 'user':
             process_user_query()
 
         if req_type == 'account':
             if account.startswith('ac_'):
-                print 'INFO: Start Date shown may be inaccurate.'
+                print('INFO: Start Date shown may be inaccurate.')
 
             process_account_query()
 
     except urllib2.URLError, e:
-        print('Error: Could not connect to backend, contact BRC Support (brc-hpc-help@berkeley.edu) if problem persists.')
+        print('ERROR: Could not connect to backend, contact BRC Support (brc-hpc-help@berkeley.edu) if problem persists.')
+        if DEBUG:
+            print('__main__ ERR: {}'.format(e))
 
-    except Exception:
-        pass
+    except Exception, e:
+        if DEBUG:
+            print('__main__ ERR: {}'.format(e))
