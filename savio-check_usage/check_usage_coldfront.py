@@ -10,6 +10,9 @@ import urllib
 import json
 
 
+# production is hit iff DEBUG is True
+DEBUG = False
+
 DEBUG = False
 VERSION = 2.0
 docstr = '''
@@ -17,7 +20,7 @@ docstr = '''
 '''.format(VERSION)
 
 # BASE_URL = 'http://localhost:8880/api'
-BASE_URL = 'http://scgup-dev.lbl.gov:8000/api'
+BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/' if DEBUG else 'https://mybrc.brc.berkeley.edu/api/'
 ALLOCATION_ENDPOINT = BASE_URL + '/allocations'
 ALLOCATION_USERS_ENDPOINT = BASE_URL + '/allocation_users'
 JOB_ENDPOINT = BASE_URL + '/jobs'
