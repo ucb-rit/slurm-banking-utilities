@@ -10,7 +10,9 @@ import subprocess
 import argparse
 import logging
 
+# production is hit iff DEBUG is True
 DEBUG = False
+
 PRICE_FILE = '/etc/slurm/bank-config.toml'
 BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/' if DEBUG else 'https://mybrc.brc.berkeley.edu/api/'
 LOG_FILE = 'update_jobs_coldfront_debug.log' if DEBUG else 'update_jobs_coldfront.log'
@@ -296,10 +298,6 @@ for current in out:
 
 print 'updating', len(table), 'jobs in mybrcdb...'
 logging.info('updating mybrcdb...')
-
-if DEBUG:
-    print 'DEBUG: run complete'
-    exit(0)
 
 counter = 0
 for jobid, job in table.items():

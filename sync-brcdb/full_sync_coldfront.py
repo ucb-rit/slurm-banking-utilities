@@ -9,7 +9,9 @@ import calendar
 import subprocess
 import logging
 
+# production is hit iff DEBUG is True
 DEBUG = False
+
 PRICE_FILE = '/etc/slurm/bank-config.toml'
 BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/' if DEBUG else 'https://mybrc.brc.berkeley.edu/api/'
 LOG_FILE = 'full_sync_coldfront_debug.log' if DEBUG else 'full_sync_coldfront.log'
@@ -277,10 +279,6 @@ for project in project_table:
             'cpu_time': float(cpu_time)}
 
 print 'pushing/updating', len(job_table), 'jobs in mybrcdb...'
-
-if DEBUG:
-    print 'DEBUG: run complete'
-    exit(0)
 
 counter = 0
 for jobid, job in job_table.items():
