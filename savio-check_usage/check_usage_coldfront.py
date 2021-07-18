@@ -10,10 +10,10 @@ import urllib
 import json
 
 
-# production is hit iff DEBUG is True
+# staging is hit iff DEBUG is True
+# production is hit iff DEBUG is False
 DEBUG = False
 
-DEBUG = False
 VERSION = 2.0
 docstr = '''
 [version: {}]

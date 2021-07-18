@@ -10,7 +10,8 @@ import subprocess
 import argparse
 import logging
 
-# production is hit iff DEBUG is True
+# staging is hit iff DEBUG is True
+# production is hit iff DEBUG is False
 DEBUG = False
 
 PRICE_FILE = '/etc/slurm/bank-config.toml'
