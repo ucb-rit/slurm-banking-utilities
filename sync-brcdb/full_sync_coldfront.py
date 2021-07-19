@@ -202,27 +202,7 @@ def get_project_start(project):
         logging.error('[get_project_start({})] ERR'.format(project))
         return None
 
-    allocation_id = response[0]['id']
-    allocation_attribute_url = allocations_url + '{}/attributes/'.format(allocation_id)
-    response = single_request(allocation_attribute_url, {'type': 'Service Units'})
-    if not response or len(response) == 0:
-        if DEBUG:
-            print '[get_project_start({})] ERR'.format(project)
-
-        logging.error('[get_project_start({})] ERR'.format(project))
-        return None
-
-    allocation_attribute_id = response[0]['id']
-    account_usage_url = allocation_attribute_url + '{}/history'.format(allocation_attribute_id)
-    response = paginate_requests(account_usage_url)
-    if not response or len(response) == 0:
-        if DEBUG:
-            print '[get_project_start({})] ERR'.format(project)
-
-        logging.error('[get_project_start({})] ERR'.format(project))
-        return None
-
-    creation = response[-1]['history_date']
+    creation = response[0]['start_date']
     return creation.split('.')[0] if '.' in creation else creation
 
 
