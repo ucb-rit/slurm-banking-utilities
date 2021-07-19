@@ -244,7 +244,7 @@ print 'gathering jobs from slurmdb'
 
 for project in project_table:
     out, err = subprocess.Popen(['sacct', '-A', project['name'], '-S', project['start'],
-                                 '--format=JobId,Submit,Start,End,UID,Account,State,Partition,QOS,NodeList,AllocCPUS,ReqNodes,AllocNodes,CPUTimeRAW,CPUTime', '-nP'],
+                                 '--format=JobId,Submit,Start,End,UID,Account,State,Partition,QOS,NodeList,AllocCPUS,ReqNodes,AllocNodes,CPUTimeRAW,CPUTime', '-naPX'],
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()
     project['jobs'] = out.splitlines()
 
@@ -256,34 +256,38 @@ for project in project_table:
         values = [str(value.decode('utf-8')) for value in line.split('|')]
         jobid, submit, start, end, uid, account, state, partition, qos, nodelist, alloc_cpus, req_nodes, alloc_nodes, cpu_time_raw, cpu_time = values
 
-        duration = calculate_time_duration(start, end)
-        node_list_converted = node_list_format(nodelist)
-        cpu_time = calculate_cpu_time(duration, alloc_cpus)
-        amount = calculate_amount(partition, alloc_cpus, duration)
+        try:
+            duration = calculate_time_duration(start, end)
+            node_list_converted = node_list_format(nodelist)
+            cpu_time = calculate_cpu_time(duration, alloc_cpus)
+            amount = calculate_amount(partition, alloc_cpus, duration)
 
-        submit, _ = utc_timestamp_to_string(datestring_to_utc_timestamp(submit))
-        start, _start = utc_timestamp_to_string(datestring_to_utc_timestamp(start))
-        end, _end = utc_timestamp_to_string(datestring_to_utc_timestamp(end))
+            submit, _ = utc_timestamp_to_string(datestring_to_utc_timestamp(submit))
+            start, _start = utc_timestamp_to_string(datestring_to_utc_timestamp(start))
+            end, _end = utc_timestamp_to_string(datestring_to_utc_timestamp(end))
 
-        raw_time = (_end - _start).total_seconds() / 3600
+            raw_time = (_end - _start).total_seconds() / 3600
 
-        job_table[jobid] = {
-            'jobslurmid': jobid,
-            'submitdate': submit,
-            'startdate': start,
-            'enddate': end,
-            'userid': uid,
-            'accountid': account,
-            'amount': str(amount),
-            'jobstatus': state,
-            'partition': partition,
-            'qos': qos,
-            'nodes': node_list_converted,
-            'num_cpus': int(alloc_cpus),
-            'num_req_nodes': int(req_nodes),
-            'num_alloc_nodes': int(alloc_nodes),
-            'raw_time': raw_time,
-            'cpu_time': float(cpu_time)}
+            job_table[jobid] = {
+                'jobslurmid': jobid,
+                'submitdate': submit,
+                'startdate': start,
+                'enddate': end,
+                'userid': uid,
+                'accountid': account,
+                'amount': str(amount),
+                'jobstatus': state,
+                'partition': partition,
+                'qos': qos,
+                'nodes': node_list_converted,
+                'num_cpus': int(alloc_cpus),
+                'num_req_nodes': int(req_nodes),
+                'num_alloc_nodes': int(alloc_nodes),
+                'raw_time': raw_time,
+                'cpu_time': float(cpu_time)}
+        except Exception, e:
+            logging.warning('ERROR occured for jobid: {} REASON: {}'.format(jobid, e))
+
 
 print 'pushing/updating', len(job_table), 'jobs in mybrcdb...'
 
