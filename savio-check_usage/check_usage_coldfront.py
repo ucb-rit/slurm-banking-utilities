@@ -137,13 +137,9 @@ def single_request(url, params=None):
     return response['results']
 
 
-def get_project_start(project, user=None):
-    if user:
-        allocation_id_url = ALLOCATION_USERS_ENDPOINT
-        params = {'project': project, 'user': user}
-    else:
-        allocation_id_url = ALLOCATION_ENDPOINT
-        params = {'project': project, 'resources': 'Savio Compute'}
+def get_project_start(project):
+    allocation_id_url = ALLOCATION_ENDPOINT
+    params = {'project': project, 'resources': 'Savio Compute'}
 
     response = single_request(allocation_id_url, params)
     if not response or len(response) == 0:
@@ -152,31 +148,13 @@ def get_project_start(project, user=None):
 
         return None
 
-    allocation_id = response[0]['id']
-    allocation_url = allocation_id_url + '{}/attributes/'.format(allocation_id)
-    response = single_request(allocation_url, {'type': 'Service Units'})
-    if not response or len(response) == 0:
-        if DEBUG:
-            print('[get_project_start({}, {})] ERR'.format(project, user))
-
-        return None
-
-    allocation_attribute_id = response[0]['id']
-    account_usage_url = allocation_url + '{}/history/'.format(allocation_attribute_id)
-    response = paginate_requests(account_usage_url, {})
-    if len(response) == 0:
-        if DEBUG:
-            print('[get_project_start({}, {})] ERR'.format(project, user))
-
-        return None
-
-    creation = response[-1]['history_date']
+    creation = response[0]['start_date']
     return creation.split('.')[0] if '.' in creation else creation
 
 
 current_month = datetime.datetime.now().month
 current_year = datetime.datetime.now().year
-default_start = current_year if current_month >= 6 else (current_year - 1)
+default_start = '{}-06-01T00:00:00'.format(current_year if current_month >= 6 else (current_year - 1))
 
 parser = argparse.ArgumentParser(description=docstr)
 parser.add_argument('-u', dest='user',
@@ -188,11 +166,10 @@ parser.add_argument('-E', dest='expand', action='store_true',
                     help='expand user/account usage')
 parser.add_argument('-s', dest='start', type=check_valid_date,
                     help='starttime for the query period (YYYY-MM-DD[THH:MM:SS])',
-                    default='{}-06-01T00:00:00'.format(default_start))
+                    default=default_start)
 parser.add_argument('-e', dest='end', type=check_valid_date,
                     help='endtime for the query period (YYYY-MM-DD[THH:MM:SS])',
-                    default=datetime.datetime.now()
-                    .strftime(timestamp_format_complete))
+                    default=datetime.datetime.now().strftime(timestamp_format_complete))
 parsed = parser.parse_args()
 user = parsed.user
 account = parsed.account
@@ -202,41 +179,16 @@ _end = parsed.end
 start = to_timestamp(_start)
 end = to_timestamp(_end)
 
-default_start_used = _start == '{}-06-01T00:00:00'.format(default_start)
-calculate_account_start_hide_allocation = default_start_used and account and not user
-calculate_user_account_start = default_start and account and user
+default_start_used = _start == default_start
+calculate_project_start = default_start_used and account
 
-# just account information, calculate single start date
-if calculate_account_start_hide_allocation:
+if calculate_project_start:
     target_start_date = get_project_start(account)
     if target_start_date is not None:
-        _start = target_start_date
-
-        # utc
-        _mystart = to_timestamp(_start)
-        _mystart = utc2local(_mystart)
-
-        # local
-        _start = to_timestring(_mystart)
+        _start = to_timestring(to_timestamp(target_start_date))
         start = to_timestamp(_start)
     elif DEBUG:
         print('[get_account_start({})] ERR'.format(account))
-
-# both account and user query, calculate single start date
-if calculate_user_account_start:
-    target_start_date = get_project_start(account, user)
-    if target_start_date is not None:
-        _start = target_start_date
-
-        # utc
-        _mystart = to_timestamp(_start)
-        _mystart = utc2local(_mystart)
-
-        # local
-        _start = to_timestring(_mystart)
-        start = to_timestamp(_start)
-    elif DEBUG:
-        print('[get_account_start({}, {})] ERR'.format(account, user))
 
 # defaults
 if not user and not account:
@@ -272,6 +224,9 @@ def get_cpu_usage(user=None, account=None):
         if DEBUG:
             print('[get_cpu_usage({}, {})] ERR: {}'.format(user, account, e))
 
+        if user and not account:
+            return -1, -1, -1
+
     job_count = response['count']
     total_cpu = response['total_cpu_time']
     total_amount = response['total_amount']
@@ -286,7 +241,8 @@ def process_account_query():
         if DEBUG:
             print('[process_account_query()] ERR')
 
-        raise urllib2.URLError('Backend Error, contact BRC Support (brc-hpc-help@berkeley.edu).')
+        print('ERR: Account not found: {}'.format(account))
+        return
 
     allocation_id = response[0]['id']
     allocation_url = allocation_id_url + '{}/attributes/'.format(allocation_id)
@@ -352,7 +308,18 @@ def process_account_query():
 
 
 def process_user_query():
+    global start, _start
+
+    # use default start
+    if default_start_used:
+        _start = default_start
+        start = to_timestamp(default_start)
+
     total_jobs, total_cpu, total_usage = get_cpu_usage(user)
+    if total_jobs == total_cpu == total_usage == -1:
+        print('ERR: User not found: {}'.format(user))
+        return
+
     print output_headers['user'], total_jobs, 'jobs,', '{:.2f}'.format(total_cpu), 'CPUHrs,', total_usage, 'SUs used.'
 
     if expand:
