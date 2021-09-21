@@ -258,17 +258,12 @@ def process_account_query():
     allocation = int(float(allocation))
 
     if 'ac_' in account or 'co_' in account:
-        # get usage from history
-        account_usage_url = allocation_url + '{}/history/'.format(allocation_attribute_id)
-        response = single_request(account_usage_url, None)
-        if not response or len(response) == 0:
-            if DEBUG:
-                print('[process_account_query()] ERR')
-
+        # get usage from allocation attribute
+        try:
+            account_usage = response[0]['usage']['value']
+        except KeyError as e:
             raise urllib2.URLError('Backend Error, contact BRC Support (brc-hpc-help@berkeley.edu).')
-
-        account_usage = response[0]['value']
-        job_count, cpu_usage = 0, 0.0
+        job_count, cpu_usage, _ = get_cpu_usage(account=account)
     else:
         # get usage from jobs
         job_count, cpu_usage, account_usage = get_cpu_usage(account=account)
