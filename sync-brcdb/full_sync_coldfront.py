@@ -157,7 +157,7 @@ def paginate_requests(url, params=None):
             results.extend(response['results'])
 
             current_page += 1
-            if current_page > 120:
+            if current_page > 50:
                 logging.warning('too many pages to sync at once, rerun script after this run completes...')
                 print 'too many pages to sync at once, rerun script after this run completes...'
                 break

@@ -192,7 +192,7 @@ def paginate_requests():
             if current_page % 5 == 0:
                 print "\tgetting page: ", current_page
 
-            if current_page > 120:
+            if current_page > 50:
                 print 'too many jobs to update at once, rerun script after this run completes...'
                 logging.info('too many jobs to update at once, rerun script after this run completes...')
                 break
