@@ -25,14 +25,16 @@ avoid over/under charging users.
   live data from Slurm using `sacct` commands
 - may need to run several times at first run (as it has a max limit of jobs it
   can update at one time)
+- optionally takes **--debug** and **--target** flags to specify mode and target endpoint
+  to use (default is production coldfront)
 
 #### full_sync_coldfront.py
 
 - takes optional arguments: start and end date; requires
   `full_sync_coldfront.conf` config file in same folder, it will contain a MyBRC
   (coldfront) access token
-- default start-end period is the current allocation, ie by default, only jobs
-  in current allocation will get updated in MyBRC db
+- only jobs in current allocation will get updated in MyBRC db, the start date
+  is taken from MyBRC API **(this is not configurable)**
 - pulls all **accounts/projects** from MyBRC db (coldfront), and collects all
   jobs in SLURM db belonging to each of those accounts. Pushes all of these
   collected jobs to the MyBRC db
@@ -40,6 +42,8 @@ avoid over/under charging users.
   usages), and also push missing jobs into the MyBRC db
 - may need to run several times at firs trun (as it has a max limit of jobs it
   can update/push at one time)
+- optionally takes **--debug** and **--target** flags to specify mode and target endpoint
+  to use (default is production coldfront)
 
 **NOTE:**
 this means that `full_sync_coldfront.py` is a superset of `update_jobs_coldfront.py`,

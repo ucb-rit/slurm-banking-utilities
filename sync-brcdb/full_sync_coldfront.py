@@ -8,15 +8,8 @@ import datetime
 import calendar
 import subprocess
 import logging
+import argparse
 
-# staging is hit iff DEBUG is True
-# production is hit iff DEBUG is False
-DEBUG = False
-
-PRICE_FILE = '/etc/slurm/bank-config.toml'
-BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/' if DEBUG else 'https://mybrc.brc.berkeley.edu/api/'
-LOG_FILE = 'full_sync_coldfront_debug.log' if DEBUG else 'full_sync_coldfront.log'
-CONFIG_FILE = 'full_sync_coldfront.conf'
 
 timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
 timestamp_format_minimal = '%Y-%m-%d'
@@ -24,6 +17,21 @@ docstr = '''
 Full Sync jobs between MyBRC-DB with Slurm-DB.
 '''
 
+
+parser = argparse.ArgumentParser(description=docstr)
+parser.add_argument('--target', dest='target',
+                    help='API endpoint to hit. NOTE: this url should end with a "/", example: https://mybrc.brc.berkeley.edu/api/',
+                    default='https://mybrc.brc.berkeley.edu/api/')
+parser.add_argument('--debug', dest='debug', action='store_true',
+                    help='launch script in DEBUG mode, this will not push updates to the TARGET and write debug logs.')
+
+parser = parser.parse_args()
+DEBUG = parser.debug
+BASE_URL = parser.target
+
+LOG_FILE = 'full_sync_coldfront_debug.log' if DEBUG else 'full_sync_coldfront.log'
+PRICE_FILE = '/etc/slurm/bank-config.toml'
+CONFIG_FILE = 'full_sync_coldfront.conf'
 
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     format='%(asctime)s %(levelname)-8s %(message)s',
@@ -37,8 +45,8 @@ if not os.path.exists(CONFIG_FILE):
 with open(CONFIG_FILE, 'r') as f:
     AUTH_TOKEN = f.read().strip()
 
-print 'starting run...'
-logging.info('starting run...')
+print 'starting run, using endpoint {} ...'.format(BASE_URL)
+logging.info('starting run, using endpoint {} ...'.format(BASE_URL))
 
 
 def calculate_cpu_time(duration, num_cpus):
@@ -138,10 +146,9 @@ def paginate_requests(url, params=None):
         req = urllib2.Request(request_url)
         response = json.loads(urllib2.urlopen(req).read())
     except urllib2.URLError, e:
-        logging.error('[paginate_requests({}, {})] failed: {}'.format(url, params, e))
-
         if DEBUG:
-            print '[paginate_requests({}, {})] failed: {}'.format(url, params, e)
+            print('[paginate_requests({}, {})] failed: {}'.format(url, params, e))
+            logging.error('[paginate_requests({}, {})] failed: {}'.format(url, params, e))
 
         return []
 
@@ -158,16 +165,16 @@ def paginate_requests(url, params=None):
 
             current_page += 1
             if current_page > 50:
-                logging.warning('too many pages to sync at once, rerun script after this run completes...')
                 print 'too many pages to sync at once, rerun script after this run completes...'
+                logging.warning('too many pages to sync at once, rerun script after this run completes...')
                 break
 
         except urllib2.URLError, e:
             response['next'] = None
-            logging.error('[paginate_requests({}, {})] failed: {}'.format(url, params, e))
 
             if DEBUG:
-                print '[paginate_requests({}, {})] failed: {}'.format(url, params, e)
+                print('[paginate_requests()] failed: {}'.format(e))
+                logging.error('[paginate_requests({}, {})] failed: {}'.format(url, params, e))
 
     return results
 
@@ -184,10 +191,10 @@ def single_request(url, params=None):
         response = json.loads(urllib2.urlopen(request).read())
     except Exception, e:
         response = {'results': None}
-        logging.error('[single_request({}, {})] failed: {}'.format(url, params, e))
 
         if DEBUG:
             print '[single_request({}, {})] failed: {}'.format(url, params, e)
+            logging.error('[single_request({}, {})] failed: {}'.format(url, params, e))
 
     return response['results']
 
@@ -198,8 +205,8 @@ def get_project_start(project):
     if not response or len(response) == 0:
         if DEBUG:
             print '[get_project_start({})] ERR'.format(project)
+            logging.error('[get_project_start({})] ERR'.format(project))
 
-        logging.error('[get_project_start({})] ERR'.format(project))
         return None
 
     creation = response[0]['start_date']
@@ -207,6 +214,7 @@ def get_project_start(project):
 
 
 print 'gathering accounts from mybrcdb...'
+logging.info('gathering data from mybrcdb...')
 
 project_table = []
 project_table_unfiltered = paginate_requests(BASE_URL + 'projects/')
@@ -220,7 +228,8 @@ for project in project_table_unfiltered:
         project['start'] = str(project_start)
         project_table.append(project)
 
-print 'gathering jobs from slurmdb'
+print 'gathering jobs from slurmdb...'
+logging.info('gathering data from slurmdb...')
 
 for project in project_table:
     out, err = subprocess.Popen(['sacct', '-A', project['name'], '-S', project['start'],
@@ -229,8 +238,9 @@ for project in project_table:
     project['jobs'] = out.splitlines()
 
 print 'parsing jobs...'
+logging.info('parsing jobs...')
 
-job_table = {}
+table = {}
 for project in project_table:
     for line in project['jobs']:
         values = [str(value.decode('utf-8')) for value in line.split('|')]
@@ -248,7 +258,7 @@ for project in project_table:
 
             raw_time = (_end - _start).total_seconds() / 3600
 
-            job_table[jobid] = {
+            table[jobid] = {
                 'jobslurmid': jobid,
                 'submitdate': submit,
                 'startdate': start,
@@ -265,14 +275,20 @@ for project in project_table:
                 'num_alloc_nodes': int(alloc_nodes),
                 'raw_time': raw_time,
                 'cpu_time': float(cpu_time)}
+
         except Exception, e:
             logging.warning('ERROR occured for jobid: {} REASON: {}'.format(jobid, e))
 
 
-print 'pushing/updating', len(job_table), 'jobs in mybrcdb...'
+if not DEBUG:
+    print('updating mybrcdb with {} jobs...'.format(len(table)))
+    logging.info('updating mybrcdb with {} jobs...'.format(len(table)))
+else:
+    print('DEBUG: collected {} jobs to update in mybrcdb...'.format(len(table)))
+    logging.info('DEBUG: collected {} jobs to update in mybrcdb...'.format(len(table)))
 
 counter = 0
-for jobid, job in job_table.items():
+for jobid, job in table.items():
     request_data = urllib.urlencode(job)
     url_target = BASE_URL + 'jobs/' + str(jobid) + '/'
     req = urllib2.Request(url=url_target, data=request_data)
@@ -281,15 +297,22 @@ for jobid, job in job_table.items():
     req.get_method = lambda: 'PUT'
 
     try:
-        json.loads(urllib2.urlopen(req).read())
+        if not DEBUG:
+            json.loads(urllib2.urlopen(req).read())
+
         logging.info('{} PUSHED/UPDATED : {}'.format(jobid, job))
         counter += 1
 
-        if counter % int(len(job_table) / 10) == 0:
-            print '\tprogress:', counter, '/', len(job_table)
+        if counter % int(len(table) / 10) == 0:
+            print '\tprogress:', counter, '/', len(table)
 
     except urllib2.HTTPError, e:
         logging.warning('ERROR occured for jobid: {} REASON: {}'.format(jobid, e.reason))
 
-print 'run complete, pushed/updated', counter, 'jobs'
-logging.info('run complete, pushed/updated {} jobs'.format(counter))
+if not DEBUG:
+    print('run complete, pushed/updated {} jobs.'.format(counter))
+    logging.info('run complete, pushed/updated {} jobs.'.format(counter))
+
+else:
+    print('DEBUG run complete, updated 0 jobs.')
+    logging.info('DEBUG run complete, updated 0 jobs.')

@@ -10,33 +10,12 @@ import subprocess
 import argparse
 import logging
 
-# staging is hit iff DEBUG is True
-# production is hit iff DEBUG is False
-DEBUG = False
-
-PRICE_FILE = '/etc/slurm/bank-config.toml'
-BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/' if DEBUG else 'https://mybrc.brc.berkeley.edu/api/'
-LOG_FILE = 'update_jobs_coldfront_debug.log' if DEBUG else 'update_jobs_coldfront.log'
-CONFIG_FILE = 'update_jobs_coldfront.conf'
 
 timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
 timestamp_format_minimal = '%Y-%m-%d'
 docstr = '''
 Sync running jobs between MyBRC-DB with Slurm-DB.
 '''
-
-
-logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
-                    format='%(asctime)s %(levelname)-8s %(message)s',
-                    datefmt='%Y-%m-%dT%H:%M:%S')
-
-if not os.path.exists(CONFIG_FILE):
-    print 'config file {} missing...'.format(CONFIG_FILE)
-    logging.info('auth config file missing [{}], exiting run...'.format(CONFIG_FILE))
-    exit(0)
-
-with open(CONFIG_FILE, 'r') as f:
-    AUTH_TOKEN = f.read().strip()
 
 
 def check_valid_date(s):
@@ -70,13 +49,37 @@ parser.add_argument('-s', dest='start', type=check_valid_date,
 parser.add_argument('-e', dest='end', type=check_valid_date,
                     help='endtime for the query period (YYYY-MM-DD[THH:MM:SS])',
                     default=datetime.datetime.utcnow().strftime(timestamp_format_complete))
+parser.add_argument('--target', dest='target',
+                    help='API endpoint to hit. NOTE: this url should end with a "/", example: https://mybrc.brc.berkeley.edu/api/',
+                    default='https://mybrc.brc.berkeley.edu/api/')
+parser.add_argument('--debug', dest='debug', action='store_true',
+                    help='launch script in DEBUG mode, this will not push updates to the TARGET and write debug logs.')
 
 parsed = parser.parse_args()
 START = parsed.start
 END = parsed.end
+DEBUG = parsed.debug
+BASE_URL = parsed.target
 
-print 'starting run...'
-logging.info('starting run...')
+LOG_FILE = 'update_jobs_coldfront_debug.log' if DEBUG else 'update_jobs_coldfront.log'
+PRICE_FILE = '/etc/slurm/bank-config.toml'
+CONFIG_FILE = 'update_jobs_coldfront.conf'
+
+
+logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
+                    format='%(asctime)s %(levelname)-8s %(message)s',
+                    datefmt='%Y-%m-%dT%H:%M:%S')
+
+if not os.path.exists(CONFIG_FILE):
+    print 'config file {} missing...'.format(CONFIG_FILE)
+    logging.info('auth config file missing [{}], exiting run...'.format(CONFIG_FILE))
+    exit(0)
+
+with open(CONFIG_FILE, 'r') as f:
+    AUTH_TOKEN = f.read().strip()
+
+print 'starting run, using endpoint {} ...'.format(BASE_URL)
+logging.info('starting run, using endpoint {} ...'.format(BASE_URL))
 
 
 def calculate_cpu_time(duration, num_cpus):
@@ -172,8 +175,16 @@ def paginate_requests():
     request_params = {'jobstatus': 'RUNNING',
                       'start_time': start_ts, 'end_time': end_ts}
     url_target = BASE_URL + 'jobs?' + urllib.urlencode(request_params)
-    req = urllib2.Request(url_target)
-    response = json.loads(urllib2.urlopen(req).read())
+
+    try:
+        req = urllib2.Request(url_target)
+        response = json.loads(urllib2.urlopen(req).read())
+    except urllib2.URLError, e:
+        if DEBUG:
+            print('[paginate_requests()] failed: {} {}'.format(request_params, e))
+            logging.error('[paginate_requests()] failed: {} {}'.format(request_params, e))
+
+        return []
 
     current_page = 0
     job_table = []
@@ -194,14 +205,15 @@ def paginate_requests():
 
             if current_page > 50:
                 print 'too many jobs to update at once, rerun script after this run completes...'
-                logging.info('too many jobs to update at once, rerun script after this run completes...')
+                logging.warning('too many jobs to update at once, rerun script after this run completes...')
                 break
 
-        except urllib2.URLError:
+        except urllib2.URLError, e:
             response['next'] = None
 
             if DEBUG:
-                print '[paginate_requests()] failed: {}'.format(e)
+                print('[paginate_requests()] failed: {}'.format(e))
+                logging.error('[paginate_requests()] failed: {}'.format(e))
 
     return job_table
 
@@ -213,17 +225,6 @@ job_table = paginate_requests()
 jobs = ''
 for job in job_table:
     jobs += job['jobslurmid'] + '\n'
-
-"""
-with open('running_jobs.txt', 'w') as f:
-    f.write(jobs)
-
-
-with open('running_jobs.txt', 'r') as f:
-    lines = f.readlines()
-
-jobs = ''.join(lines)
-"""
 
 print 'gathering data from slurmdb...'
 logging.info('gathering data from slurmdb...')
@@ -244,6 +245,7 @@ out = outer.splitlines()
 
 print 'parsing jobs...'
 logging.info('parsing jobs...')
+
 table = {}
 param_count = 15
 for current in out:
@@ -267,38 +269,46 @@ for current in out:
     if state == 'COMPLETED':
         state = 'COMPLETING'
 
-    duration = calculate_time_duration(start, end)
-    node_list_converted = node_list_format(nodelist)
-    cpu_time = calculate_cpu_time(duration, alloc_cpus)
-    amount = calculate_amount(partition, alloc_cpus, duration)
+    try:
+        duration = calculate_time_duration(start, end)
+        node_list_converted = node_list_format(nodelist)
+        cpu_time = calculate_cpu_time(duration, alloc_cpus)
+        amount = calculate_amount(partition, alloc_cpus, duration)
 
-    submit, _ = utc_timestamp_to_string(datestring_to_utc_timestamp(submit))
-    start, _start = utc_timestamp_to_string(datestring_to_utc_timestamp(start))
-    end, _end = utc_timestamp_to_string(datestring_to_utc_timestamp(end))
+        submit, _ = utc_timestamp_to_string(datestring_to_utc_timestamp(submit))
+        start, _start = utc_timestamp_to_string(datestring_to_utc_timestamp(start))
+        end, _end = utc_timestamp_to_string(datestring_to_utc_timestamp(end))
 
-    raw_time = (_end - _start).total_seconds() / 3600
+        raw_time = (_end - _start).total_seconds() / 3600
 
-    table[jobid] = {
-        'jobslurmid': jobid,
-        'submitdate': submit,
-        'startdate': start,
-        'enddate': end,
-        'userid': uid,
-        'accountid': account,
-        'amount': str(amount),
-        'jobstatus': state,
-        'partition': partition,
-        'qos': qos,
-        'nodes': node_list_converted,
-        'num_cpus': int(alloc_cpus),
-        'num_req_nodes': int(req_nodes),
-        'num_alloc_nodes': int(alloc_nodes),
-        'raw_time': raw_time,
-        'cpu_time': float(cpu_time)}
+        table[jobid] = {
+            'jobslurmid': jobid,
+            'submitdate': submit,
+            'startdate': start,
+            'enddate': end,
+            'userid': uid,
+            'accountid': account,
+            'amount': str(amount),
+            'jobstatus': state,
+            'partition': partition,
+            'qos': qos,
+            'nodes': node_list_converted,
+            'num_cpus': int(alloc_cpus),
+            'num_req_nodes': int(req_nodes),
+            'num_alloc_nodes': int(alloc_nodes),
+            'raw_time': raw_time,
+            'cpu_time': float(cpu_time)}
+
+    except Exception, e:
+        logging.warning('ERROR occured for jobid: {} REASON: {}'.format(jobid, e))
 
 
-print 'updating', len(table), 'jobs in mybrcdb...'
-logging.info('updating mybrcdb...')
+if not DEBUG:
+    print('updating mybrcdb with {} jobs...'.format(len(table)))
+    logging.info('updating mybrcdb with {} jobs...'.format(len(table)))
+else:
+    print('DEBUG: collected {} jobs to update in mybrcdb...'.format(len(table)))
+    logging.info('DEBUG: collected {} jobs to update in mybrcdb...'.format(len(table)))
 
 counter = 0
 for jobid, job in table.items():
@@ -310,7 +320,9 @@ for jobid, job in table.items():
     req.get_method = lambda: 'PUT'
 
     try:
-        json.loads(urllib2.urlopen(req).read())
+        if not DEBUG:
+            json.loads(urllib2.urlopen(req).read())
+
         logging.info('{} UPDATED : {}'.format(jobid, job))
         counter += 1
 
@@ -318,6 +330,12 @@ for jobid, job in table.items():
             print '\tprogress:', counter, '/', len(table)
 
     except urllib2.HTTPError, e:
-        logging.error('ERROR occured for jobid: {} REASON: {}'.format(jobid, e.reason))
+        logging.warning('ERROR occured for jobid: {} REASON: {}'.format(jobid, e.reason))
 
-logging.info('run complete, updated {} jobs'.format(counter))
+if not DEBUG:
+    print('run complete, updated {} jobs.'.format(counter))
+    logging.info('run complete, updated {} jobs.'.format(counter))
+
+else:
+    print('DEBUG run complete, updated 0 jobs.')
+    logging.info('DEBUG run complete, updated 0 jobs.')
