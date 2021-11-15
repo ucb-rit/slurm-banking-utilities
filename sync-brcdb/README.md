@@ -34,7 +34,9 @@ avoid over/under charging users.
   `full_sync_coldfront.conf` config file in same folder, it will contain a MyBRC
   (coldfront) access token
 - only jobs in current allocation will get updated in MyBRC db, the start date
-  is taken from MyBRC API **(this is not configurable)**
+  is taken from MyBRC API **(this is not configurable)**. For projects which
+  dont have a start date in MyBRC db like `vector_`, default start date is used,
+  which is the last june 1
 - pulls all **accounts/projects** from MyBRC db (coldfront), and collects all
   jobs in SLURM db belonging to each of those accounts. Pushes all of these
   collected jobs to the MyBRC db

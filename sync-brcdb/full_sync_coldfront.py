@@ -18,10 +18,6 @@ Full Sync jobs between MyBRC-DB with Slurm-DB.
 '''
 
 
-current_month = datetime.datetime.now().month
-current_year = datetime.datetime.now().year
-default_start = current_year if current_month >= 6 else (current_year - 1)
-
 parser = argparse.ArgumentParser(description=docstr)
 parser.add_argument('--target', dest='target',
                     help='API endpoint to hit. NOTE: this url should end with a "/", example: https://mybrc.brc.berkeley.edu/api/',
@@ -229,6 +225,11 @@ def get_project_start(project):
 
 print('gathering accounts from mybrcdb...')
 logging.info('gathering data from mybrcdb...')
+
+current_month = datetime.datetime.now().month
+current_year = datetime.datetime.now().year
+default_start = current_year if current_month >= 6 else (current_year - 1)
+default_start = '{}-06-01T00:00:00'.format(default_start)
 
 project_table = []
 project_table_unfiltered = paginate_requests(BASE_URL + 'projects/')
