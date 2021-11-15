@@ -65,20 +65,22 @@ LOG_FILE = 'update_jobs_coldfront_debug.log' if DEBUG else 'update_jobs_coldfron
 PRICE_FILE = '/etc/slurm/bank-config.toml'
 CONFIG_FILE = 'update_jobs_coldfront.conf'
 
-
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     format='%(asctime)s %(levelname)-8s %(message)s',
                     datefmt='%Y-%m-%dT%H:%M:%S')
 
 if not os.path.exists(CONFIG_FILE):
-    print 'config file {} missing...'.format(CONFIG_FILE)
+    print('config file {} missing...'.format(CONFIG_FILE))
     logging.info('auth config file missing [{}], exiting run...'.format(CONFIG_FILE))
     exit(0)
 
 with open(CONFIG_FILE, 'r') as f:
     AUTH_TOKEN = f.read().strip()
 
-print 'starting run, using endpoint {} ...'.format(BASE_URL)
+if DEBUG:
+    print('---DEBUG RUN---')
+
+print('starting run, using endpoint {} ...'.format(BASE_URL))
 logging.info('starting run, using endpoint {} ...'.format(BASE_URL))
 
 
@@ -179,7 +181,7 @@ def paginate_requests():
     try:
         req = urllib2.Request(url_target)
         response = json.loads(urllib2.urlopen(req).read())
-    except urllib2.URLError, e:
+    except urllib2.URLError as e:
         if DEBUG:
             print('[paginate_requests()] failed: {} {}'.format(request_params, e))
             logging.error('[paginate_requests()] failed: {} {}'.format(request_params, e))
@@ -192,7 +194,6 @@ def paginate_requests():
     while response['next'] is not None:
         try:
             current_page += 1
-
             request_params = {'jobstatus': 'RUNNING', 'page': current_page,
                               'start_time': start_ts, 'end_time': end_ts}
             url_target = BASE_URL + '/jobs?' + urllib.urlencode(request_params)
@@ -201,14 +202,14 @@ def paginate_requests():
 
             job_table.extend(response['results'])
             if current_page % 5 == 0:
-                print "\tgetting page: ", current_page
+                print("\tgetting page: {}".format(current_page))
 
             if current_page > 50:
-                print 'too many jobs to update at once, rerun script after this run completes...'
+                print('too many jobs to update at once, rerun script after this run completes...')
                 logging.warning('too many jobs to update at once, rerun script after this run completes...')
                 break
 
-        except urllib2.URLError, e:
+        except urllib2.URLError as e:
             response['next'] = None
 
             if DEBUG:
@@ -218,7 +219,7 @@ def paginate_requests():
     return job_table
 
 
-print 'gathering data from mybrcdb...'
+print('gathering data from mybrcdb...')
 logging.info('gathering data from mybrcdb...')
 
 job_table = paginate_requests()
@@ -226,7 +227,7 @@ jobs = ''
 for job in job_table:
     jobs += job['jobslurmid'] + '\n'
 
-print 'gathering data from slurmdb...'
+print('gathering data from slurmdb...')
 logging.info('gathering data from slurmdb...')
 lines = jobs.splitlines()
 
@@ -243,7 +244,7 @@ out = subprocess.Popen(['sacct', '-j', central,
 outer, _ = out.communicate()
 out = outer.splitlines()
 
-print 'parsing jobs...'
+print('parsing jobs...')
 logging.info('parsing jobs...')
 
 table = {}
@@ -299,7 +300,7 @@ for current in out:
             'raw_time': raw_time,
             'cpu_time': float(cpu_time)}
 
-    except Exception, e:
+    except Exception as e:
         logging.warning('ERROR occured for jobid: {} REASON: {}'.format(jobid, e))
 
 
@@ -327,9 +328,9 @@ for jobid, job in table.items():
         counter += 1
 
         if counter % int(len(table) / 10) == 0:
-            print '\tprogress:', counter, '/', len(table)
+            print('\tprogress: {}/{}'.format(counter, len(table)))
 
-    except urllib2.HTTPError, e:
+    except urllib2.HTTPError as e:
         logging.warning('ERROR occured for jobid: {} REASON: {}'.format(jobid, e.reason))
 
 if not DEBUG:

@@ -38,14 +38,17 @@ logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     datefmt='%Y-%m-%dT%H:%M:%S')
 
 if not os.path.exists(CONFIG_FILE):
-    print 'config file {} missing...'.format(CONFIG_FILE)
+    print('config file {} missing...'.format(CONFIG_FILE))
     logging.info('auth config file missing [{}], exiting run...'.format(CONFIG_FILE))
     exit(0)
 
 with open(CONFIG_FILE, 'r') as f:
     AUTH_TOKEN = f.read().strip()
 
-print 'starting run, using endpoint {} ...'.format(BASE_URL)
+if DEBUG:
+    print('---DEBUG RUN---')
+
+print('starting run, using endpoint {} ...'.format(BASE_URL))
 logging.info('starting run, using endpoint {} ...'.format(BASE_URL))
 
 
@@ -145,31 +148,34 @@ def paginate_requests(url, params=None):
     try:
         req = urllib2.Request(request_url)
         response = json.loads(urllib2.urlopen(req).read())
-    except urllib2.URLError, e:
+    except urllib2.URLError as e:
         if DEBUG:
             print('[paginate_requests({}, {})] failed: {}'.format(url, params, e))
             logging.error('[paginate_requests({}, {})] failed: {}'.format(url, params, e))
 
         return []
 
-    current_page = 1
+    current_page = 0
     results = []
     results.extend(response['results'])
     while response['next'] is not None:
         try:
+            current_page += 1
             params['page'] = current_page
             request_url = url + '?' + urllib.urlencode(params)
             req = urllib2.Request(request_url)
             response = json.loads(urllib2.urlopen(req).read())
-            results.extend(response['results'])
 
-            current_page += 1
+            results.extend(response['results'])
+            if current_page % 5 == 0:
+                print('\tgetting page: {}'.format(current_page))
+
             if current_page > 50:
-                print 'too many pages to sync at once, rerun script after this run completes...'
+                print('too many pages to sync at once, rerun script after this run completes...')
                 logging.warning('too many pages to sync at once, rerun script after this run completes...')
                 break
 
-        except urllib2.URLError, e:
+        except urllib2.URLError as e:
             response['next'] = None
 
             if DEBUG:
@@ -189,11 +195,11 @@ def single_request(url, params=None):
     try:
         request = urllib2.Request(request_url)
         response = json.loads(urllib2.urlopen(request).read())
-    except Exception, e:
+    except Exception as e:
         response = {'results': None}
 
         if DEBUG:
-            print '[single_request({}, {})] failed: {}'.format(url, params, e)
+            print('[single_request({}, {})] failed: {}'.format(url, params, e))
             logging.error('[single_request({}, {})] failed: {}'.format(url, params, e))
 
     return response['results']
@@ -204,16 +210,20 @@ def get_project_start(project):
     response = single_request(allocations_url, {'project': project, 'resources': 'Savio Compute'})
     if not response or len(response) == 0:
         if DEBUG:
-            print '[get_project_start({})] ERR'.format(project)
+            print('[get_project_start({})] ERR'.format(project))
             logging.error('[get_project_start({})] ERR'.format(project))
 
         return None
 
     creation = response[0]['start_date']
-    return creation.split('.')[0] if '.' in creation else creation
+
+    if creation:
+        return creation.split('.')[0] if '.' in creation else creation
+    else:
+        return None
 
 
-print 'gathering accounts from mybrcdb...'
+print('gathering accounts from mybrcdb...')
 logging.info('gathering data from mybrcdb...')
 
 project_table = []
@@ -228,16 +238,20 @@ for project in project_table_unfiltered:
         project['start'] = str(project_start)
         project_table.append(project)
 
-print 'gathering jobs from slurmdb...'
+print('gathering jobs from slurmdb...')
 logging.info('gathering data from slurmdb...')
 
-for project in project_table:
+for index, project in enumerate(project_table):
     out, err = subprocess.Popen(['sacct', '-A', project['name'], '-S', project['start'],
                                  '--format=JobId,Submit,Start,End,UID,Account,State,Partition,QOS,NodeList,AllocCPUS,ReqNodes,AllocNodes,CPUTimeRAW,CPUTime', '-naPX'],
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()
     project['jobs'] = out.splitlines()
 
-print 'parsing jobs...'
+    if index % int(len(project_table) / 10) == 0:
+        print('\tprogress: {}/{}'.format(index, len(project_table)))
+
+
+print('parsing jobs...')
 logging.info('parsing jobs...')
 
 table = {}
@@ -276,7 +290,7 @@ for project in project_table:
                 'raw_time': raw_time,
                 'cpu_time': float(cpu_time)}
 
-        except Exception, e:
+        except Exception as e:
             logging.warning('ERROR occured for jobid: {} REASON: {}'.format(jobid, e))
 
 
@@ -304,9 +318,9 @@ for jobid, job in table.items():
         counter += 1
 
         if counter % int(len(table) / 10) == 0:
-            print '\tprogress:', counter, '/', len(table)
+            print('\tprogress: {}/{}'.format(counter, len(table)))
 
-    except urllib2.HTTPError, e:
+    except urllib2.HTTPError as e:
         logging.warning('ERROR occured for jobid: {} REASON: {}'.format(jobid, e.reason))
 
 if not DEBUG:
