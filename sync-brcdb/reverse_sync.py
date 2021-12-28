@@ -149,7 +149,7 @@ for project in project_table:
 
 lines = []  # can use this to update fca.conf file
 for project in project_table:
-    if not (project['allocation'] or project['start']):
+    if not project['allocation'] or not project['start']:
         print('[project: {}] ERR, could not get allocation / start values'.format(project['name']))
         logging.error('[project: {}] ERR, could not get allocation / start values'.format(project['name']))
         continue
@@ -166,11 +166,16 @@ print('writing data to slurmdb...')
 logging.info('writing data to slurmdb...')
 
 for project in project_table:
-    out, err = subprocess.Popen(['sacctmgr', 'modify', 'account', project['name'], 'set', 'GrpTRESMins="cpu={}"'.format(project['allocation'])],
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()
+    if not project['allocation'] or not project['name']:
+        print('[project: {}] ERR, could not set allocation'.format(project['name']))
+        logging.error('[project: {}] ERR, could not set allocation'.format(project['name']))
+        continue
 
-    print('updated account: {}, allocation set to: {}'.format(project['name'], project['allocation']))
-    logging.info('updated account: {}, allocation set to: {}'.format(project['name'], project['allocation']))
+    command = 'sacctmgr modify account {} set GrpTRESMins="cpu={}"'.format(project['name'], project['allocation'])
+    out, _ = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True).communicate()
+
+    print('updated account: {}, allocation set to: {}, with error: {}'.format(project['name'], project['allocation'], out))
+    logging.info('updated account: {}, allocation set to: {}, with error: {}'.format(project['name'], project['allocation'], out))
 
 print('updated allocation limits for {} accounts, run complete, exiting...'.format(len(project_table)))
 logging.info('updated allocation limits for {} accounts, run complete, exiting...'.format(len(project_table)))
