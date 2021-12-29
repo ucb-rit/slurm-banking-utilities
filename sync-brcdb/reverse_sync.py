@@ -147,7 +147,8 @@ for project in project_table:
     project['allocation'] = get_project_allocation(project['name'])
     project['start'] = get_project_start(project['name'])
 
-lines = []  # can use this to update fca.conf file
+# NOTE: can use this to update fca.conf file
+lines = []
 for project in project_table:
     if not project['allocation'] or not project['start']:
         print('[project: {}] ERR, could not get allocation / start values'.format(project['name']))
@@ -165,19 +166,28 @@ if DEBUG:
 print('writing data to slurmdb...')
 logging.info('writing data to slurmdb...')
 
+commands = ''
 for project in project_table:
     if not project['allocation'] or not project['name']:
         print('[project: {}] ERR, could not set allocation'.format(project['name']))
         logging.error('[project: {}] ERR, could not set allocation'.format(project['name']))
         continue
 
+    # TODO: print commands to file
     command = 'sacctmgr modify account {} set GrpTRESMins="cpu={}"'.format(project['name'], project['allocation'])
-    out, _ = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True).communicate()
+    commands += '\n' + command
 
-    print('updated account: {}, allocation set to: {}, with error: {}'.format(project['name'], project['allocation'], out))
-    logging.info('updated account: {}, allocation set to: {}, with error: {}'.format(project['name'], project['allocation'], out))
+    # out, _ = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True).communicate()
+    # print('updated account: {}, allocation set to: {}, with error: {}'.format(project['name'], project['allocation'], out))
+    # logging.info('updated account: {}, allocation set to: {}, with error: {}'.format(project['name'], project['allocation'], out))
 
-print('updated allocation limits for {} accounts, run complete, exiting...'.format(len(project_table)))
-logging.info('updated allocation limits for {} accounts, run complete, exiting...'.format(len(project_table)))
+# print('updated allocation limits for {} accounts, run complete, exiting...'.format(len(project_table)))
+# logging.info('updated allocation limits for {} accounts, run complete, exiting...'.format(len(project_table)))
+
+with open('reverse_sync_output.sh', 'w') as f:
+    f.writelines(commands)
+
+print('run complete, wrote output to reverse_sync_output.sh, exiting...')
+logging.info('run complete, wrote output to reverse_sync_output.sh, exiting...')
 
 # sacctmgr modify account <account_name> set GrpTRESMins="cpu=xxxx"
