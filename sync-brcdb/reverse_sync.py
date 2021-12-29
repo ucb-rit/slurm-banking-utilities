@@ -6,7 +6,7 @@ import urllib2
 import json
 import subprocess
 
-DEBUG = True
+DEBUG = False
 BASE_URL = 'https://mybrc.brc.berkeley.edu/api/'
 
 LOG_FILE = 'reverse_sync.log'
