@@ -168,7 +168,7 @@ logging.info('writing data to slurmdb...')
 
 commands = ''
 for project in project_table:
-    if not project['allocation'] or not project['name']:
+    if ('allocation' not in project) or ('name' not in project):
         print('[project: {}] ERR, could not set allocation'.format(project['name']))
         logging.error('[project: {}] ERR, could not set allocation'.format(project['name']))
         continue
