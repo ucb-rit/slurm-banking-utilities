@@ -147,16 +147,18 @@ for project in project_table:
     project['allocation'] = get_project_allocation(project['name'])
     project['start'] = get_project_start(project['name'])
 
+'''
 # NOTE: can use this to update fca.conf file
 lines = []
 for project in project_table:
-    if not project['allocation'] or not project['start']:
-        print('[project: {}] ERR, could not get allocation / start values'.format(project['name']))
-        logging.error('[project: {}] ERR, could not get allocation / start values'.format(project['name']))
+    if ('allocation' not in project) or ('name' not in project) or (project['allocation'] == None):
+        print('[project: {}] ERR, could not set allocation (value={})'.format(project['name'], project['allocation']))
+        logging.error('[project: {}] ERR, could not set allocation (value={})'.format(project['name'], project['allocation']))
         continue
 
     lines.append('{}|{}|{}|Initial Allocation for {}'.format(
         project['name'], project['start'], project['allocation'], project['name']))
+'''
 
 if DEBUG:
     print('debug run complete, exiting...')
@@ -168,9 +170,9 @@ logging.info('writing data to slurmdb...')
 
 commands = ''
 for project in project_table:
-    if ('allocation' not in project) or ('name' not in project):
-        print('[project: {}] ERR, could not set allocation'.format(project['name']))
-        logging.error('[project: {}] ERR, could not set allocation'.format(project['name']))
+    if ('allocation' not in project) or ('name' not in project) or (project['allocation'] == None):
+        print('[project: {}] ERR, could not set allocation (value={})'.format(project['name'], project['allocation']))
+        logging.error('[project: {}] ERR, could not set allocation (value={})'.format(project['name'], project['allocation']))
         continue
 
     # TODO: print commands to file
