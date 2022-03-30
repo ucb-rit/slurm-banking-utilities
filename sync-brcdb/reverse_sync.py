@@ -176,7 +176,8 @@ for project in project_table:
         continue
 
     # TODO: print commands to file
-    command = 'sacctmgr modify account {} set GrpTRESMins="cpu={}"'.format(project['name'], project['allocation'])
+    allocation_in_seconds = project['allocation']
+    command = 'sacctmgr modify account {} set GrpTRESMins="cpu={}"'.format(project['name'], allocation_in_seconds)
     commands += '\n' + command
 
     # out, _ = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True).communicate()
