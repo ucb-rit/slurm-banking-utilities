@@ -176,7 +176,7 @@ for project in project_table:
         continue
 
     # TODO: print commands to file
-    allocation_in_seconds = project['allocation']
+    allocation_in_seconds = 60 * project['allocation']
     command = 'sacctmgr modify account {} set GrpTRESMins="cpu={}"'.format(project['name'], allocation_in_seconds)
     commands += '\n' + command
 
