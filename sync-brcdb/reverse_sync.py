@@ -49,7 +49,7 @@ def paginate_requests(url, params=None):
 
         return []
 
-    current_page = 0
+    current_page = 1
     results = []
     results.extend(response['results'])
     while response['next'] is not None:
@@ -143,6 +143,9 @@ print('gathering accounts from mybrcdb...')
 logging.info('gathering data from mybrcdb...')
 
 project_table = paginate_requests(BASE_URL + 'projects/')
+project_table = filter(
+    lambda p: p['name'] != 'abc' and not p['name'].startswith('vector_'),
+    project_table)
 for project in project_table:
     project['allocation'] = get_project_allocation(project['name'])
     project['start'] = get_project_start(project['name'])
@@ -177,7 +180,7 @@ for project in project_table:
 
     # TODO: print commands to file
     allocation_in_seconds = 60 * project['allocation']
-    command = 'sacctmgr modify account {} set GrpTRESMins="cpu={}"'.format(project['name'], allocation_in_seconds)
+    command = 'yes | sacctmgr modify account {} set GrpTRESMins="cpu={}"'.format(project['name'], allocation_in_seconds)
     commands += '\n' + command
 
     # out, _ = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True).communicate()
