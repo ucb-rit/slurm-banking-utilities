@@ -17,8 +17,8 @@ logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     datefmt='%Y-%m-%dT%H:%M:%S')
 
 if not os.path.exists(CONFIG_FILE):
-    print('config file {} missing...'.format(CONFIG_FILE))
-    logging.info('auth config file missing [{}], exiting run...'.format(CONFIG_FILE))
+    print('config file {0} missing...'.format(CONFIG_FILE))
+    logging.info('auth config file missing [{0}], exiting run...'.format(CONFIG_FILE))
     exit()
 
 with open(CONFIG_FILE, 'r') as f:
@@ -27,8 +27,8 @@ with open(CONFIG_FILE, 'r') as f:
 if DEBUG:
     print('---DEBUG RUN---')
 
-print('starting run, using endpoint {} ...'.format(BASE_URL))
-logging.info('starting run, using endpoint {} ...'.format(BASE_URL))
+print('starting run, using endpoint {0} ...'.format(BASE_URL))
+logging.info('starting run, using endpoint {0} ...'.format(BASE_URL))
 
 
 def paginate_requests(url, params=None):
@@ -44,8 +44,8 @@ def paginate_requests(url, params=None):
 
     except urllib2.URLError as e:
         if DEBUG:
-            print('[paginate_requests({}, {})] failed: {}'.format(url, params, e))
-            logging.error('[paginate_requests({}, {})] failed: {}'.format(url, params, e))
+            print('[paginate_requests({0}, {1})] failed: {2}'.format(url, params, e))
+            logging.error('[paginate_requests({0}, {1})] failed: {2}'.format(url, params, e))
 
         return []
 
@@ -62,7 +62,7 @@ def paginate_requests(url, params=None):
 
             results.extend(response['results'])
             if current_page % 5 == 0:
-                print('\tgetting page: {}'.format(current_page))
+                print('\tgetting page: {0}'.format(current_page))
 
             if current_page > 50:
                 print('too many pages to sync at once, rerun script after this run completes...')
@@ -73,8 +73,8 @@ def paginate_requests(url, params=None):
             response['next'] = None
 
             if DEBUG:
-                print('[paginate_requests()] failed: {}'.format(e))
-                logging.error('[paginate_requests({}, {})] failed: {}'.format(url, params, e))
+                print('[paginate_requests()] failed: {0}'.format(e))
+                logging.error('[paginate_requests({0}, {1})] failed: {2}'.format(url, params, e))
 
     return results
 
@@ -93,8 +93,8 @@ def single_request(url, params=None):
         response = {'results': None}
 
         if DEBUG:
-            print('[single_request({}, {})] failed: {}'.format(url, params, e))
-            logging.error('[single_request({}, {})] failed: {}'.format(url, params, e))
+            print('[single_request({0}, {1})] failed: {2}'.format(url, params, e))
+            logging.error('[single_request({0}, {1})] failed: {2}'.format(url, params, e))
 
     return response['results']
 
@@ -104,13 +104,13 @@ def get_project_allocation(project_name):
     response = single_request(allocation_id_url, {'project': project_name, 'resources': 'Savio Compute'})
     if not response or len(response) == 0:
         if DEBUG:
-            print('[get_project_allocation({})] ERR'.format(project_name))
-            logging.error('[get_project_allocation({})] ERR'.format(project_name))
+            print('[get_project_allocation({0})] ERR'.format(project_name))
+            logging.error('[get_project_allocation({0})] ERR'.format(project_name))
 
         return None
 
     allocation_id = response[0]['id']
-    allocation_url = allocation_id_url + '{}/attributes/'.format(allocation_id)
+    allocation_url = allocation_id_url + '{0}/attributes/'.format(allocation_id)
     response = single_request(allocation_url, {'type': 'Service Units'})
     if not response:
         return None
@@ -126,8 +126,8 @@ def get_project_start(project_name):
     response = single_request(allocations_url, {'project': project_name, 'resources': 'Savio Compute'})
     if not response or len(response) == 0:
         if DEBUG:
-            print('[get_project_start({})] ERR'.format(project_name))
-            logging.error('[get_project_start({})] ERR'.format(project_name))
+            print('[get_project_start({0})] ERR'.format(project_name))
+            logging.error('[get_project_start({0})] ERR'.format(project_name))
 
         return None
 
@@ -136,7 +136,7 @@ def get_project_start(project_name):
         return None
 
     creation = creation if '.' not in creation else creation.split('.')[0]
-    return '{}T00:00:00'.format(creation)
+    return '{0}T00:00:00'.format(creation)
 
 
 print('gathering accounts from mybrcdb...')
@@ -174,13 +174,13 @@ logging.info('writing data to slurmdb...')
 commands = ''
 for project in project_table:
     if ('allocation' not in project) or ('name' not in project) or (project['allocation'] == None):
-        print('[project: {}] ERR, could not set allocation (value={})'.format(project['name'], project['allocation']))
-        logging.error('[project: {}] ERR, could not set allocation (value={})'.format(project['name'], project['allocation']))
+        print('[project: {0}] ERR, could not set allocation (value={1})'.format(project['name'], project['allocation']))
+        logging.error('[project: {0}] ERR, could not set allocation (value={1})'.format(project['name'], project['allocation']))
         continue
 
     # TODO: print commands to file
     allocation_in_seconds = 60 * project['allocation']
-    command = 'yes | sacctmgr modify account {} set GrpTRESMins="cpu={}"'.format(project['name'], allocation_in_seconds)
+    command = 'yes | sacctmgr modify account {0} set GrpTRESMins="cpu={1}"'.format(project['name'], allocation_in_seconds)
     commands += '\n' + command
 
     # out, _ = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True).communicate()
