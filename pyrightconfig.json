@@ -1,9 +1,3 @@
 {
     "typeCheckingMode": "off",
-    "executionEnvironments": [
-        {
-            "root": "./" ,
-            "venv": "./venv"
-        }
-    ]
 }

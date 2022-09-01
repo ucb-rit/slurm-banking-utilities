@@ -1,3 +1,3 @@
 # formatter and linter : pylsp
 [pycodestyle]
-max_line_length = 120
+max_line_length = 180
