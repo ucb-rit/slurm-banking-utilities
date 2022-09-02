@@ -8,17 +8,31 @@ from collections import defaultdict
 import os
 
 
-VERSION = 0.1
+# staging is hit iff DBEUG is True
+# production is hit iff DEBUG is False
+DEBUG = False
+
+VERSION = 0.2
 docstr = '''
 [version: {}]
 '''.format(VERSION)
 
-BASE_URL = 'http://mybrc.brc.berkeley.edu/mybrc-rest/'
-# BASE_URL = 'https://scgup-dev.lbl.gov:8443/mybrc-rest'
-# BASE_URL = 'http://localhost:8880/mybrc-rest'
+MODE_MYBRC = 'mybrc'
+MODE_MYLRC = 'mybrc'
+
+MODE = 'mybrc'
+TARGET = 'mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov'
+
+# production
+BASE_URL = 'https://{}/api/'.format(TARGET)
+
+# staging
+if DEBUG:
+    DEBUG_TARGET = 'scgup-dev.lbl.gov'
+    DEBUG_TARGET += '' if MODE == MODE_MYBRC else ':8443'
+    BASE_URL = 'https://{}/api/'.format(DEBUG_TARGET)
 
 FILE_NAME = 'jobcomp.log'
-
 timestamp_format = '%Y-%m-%dT%H:%M:%S'
 
 
@@ -48,7 +62,7 @@ def get_job_url(start, end, user, account, page=1):
     if account:
         request_params['account'] = account
 
-    url_usages = BASE_URL + '/jobs?' + \
+    url_usages = BASE_URL + 'jobs?' + \
         urllib.urlencode(request_params)
     return url_usages
 
@@ -57,7 +71,7 @@ def paginate_req_table(url_function, params=[None, None, None, None]):
     req = urllib2.Request(url_function(*params))
     response = json.loads(urllib2.urlopen(req).read())
 
-    table = response['results']
+    yield response['results']
     page = 2
     while response['next'] is not None:
         try:
@@ -65,12 +79,9 @@ def paginate_req_table(url_function, params=[None, None, None, None]):
             response = json.loads(urllib2.urlopen(req).read())
 
             yield response['results']
-            # table.extend(response['results'])
             page += 1
         except urllib2.URLError:
             response['next'] = None
-
-    # return table
 
 
 def calculate_params():
@@ -136,14 +147,15 @@ with open(FILE_NAME, 'a') as f:
                                       qos=qos,
                                       submittime=submittime)) + '\n')
 
-            print string.Formatter() \
-                .vformat(line_template, (),
-                         SafeDict(jobid=jobid,
-                                  userid=userid,
-                                  jobstate=jobstate,
-                                  partition=partition,
-                                  starttime=starttime, endtime=endtime,
-                                  nodelist=nodelist,
-                                  nodecount=nodecnt, proccount=proccnt,
-                                  qos=qos,
-                                  submittime=submittime))
+            if DEBUG:
+                print string.Formatter() \
+                    .vformat(line_template, (),
+                             SafeDict(jobid=jobid,
+                                      userid=userid,
+                                      jobstate=jobstate,
+                                      partition=partition,
+                                      starttime=starttime, endtime=endtime,
+                                      nodelist=nodelist,
+                                      nodecount=nodecnt, proccount=proccnt,
+                                      qos=qos,
+                                      submittime=submittime))
