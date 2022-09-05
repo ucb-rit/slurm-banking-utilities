@@ -61,28 +61,34 @@ def check_valid_date(s):
         return s
 
 
-def to_timestamp(date_time):
+# date time string -> time stamp
+def to_timestamp(date_time, to_utc=False):
     try:
-        return calendar.timegm(time.strptime(date_time, timestamp_format_complete))
+        dt_obj = datetime.datetime.strptime(date_time, timestamp_format_complete)
     except ValueError:
-        return calendar.timegm(time.strptime(date_time, timestamp_format_minimal))
+        dt_obj = datetime.datetime.strptime(date_time, timestamp_format_minimal)
+
+    if to_utc:
+        return time.mktime(dt_obj.timetuple())
+
+    else:
+        return calendar.timegm(dt_obj.timetuple())
 
 
+# utc time stamp -> utc date time string
 def to_timestring(timestamp):
     date_time = datetime.datetime.utcfromtimestamp(timestamp)
-    return date_time.strftime(timestamp_format_complete)
+    return date_time.strftime(timestamp_format_complete) + 'Z'
 
 
+# utc time stamp -> local time stamp
 def utc2local(utc):
     utc = datetime.datetime.utcfromtimestamp(utc)
-    epoch = time.mktime(utc.timetuple())
-    offset = datetime.datetime.fromtimestamp(epoch) - datetime.datetime.utcfromtimestamp(epoch)
-
-    local = utc + datetime.timedelta(hours=-7)  # + offset
-    local = time.mktime(local.timetuple())  # calendar.timegm(local.timetuple())
+    local = utc + datetime.timedelta(hours=-7)
+    local = time.mktime(local.timetuple())
 
     if DEBUG:
-        print('[utc2local] utc_timestamp: {} local_timestamp: {}'.format(epoch, local))
+        print('[utc2local] utc_timestamp: {} local_timestamp: {}'.format(utc, local))
 
     return local
 
@@ -93,7 +99,7 @@ def paginate_requests(url, params):
 
     try:
         response = json.loads(urllib2.urlopen(request).read())
-    except Exception, e:
+    except Exception as e:
         response = {'results': None}
         if DEBUG:
             print('[paginate_requests({}, {})] ERR: {}'.format(url, params, e))
@@ -111,7 +117,7 @@ def paginate_requests(url, params):
             response = json.loads(urllib2.urlopen(request).read())
             results.extend(response['results'])
             next_page += 1
-        except urllib2.URLError, e:
+        except urllib2.URLError as e:
             response['next'] = None
 
             if DEBUG:
@@ -128,7 +134,7 @@ def single_request(url, params=None):
 
     try:
         response = json.loads(urllib2.urlopen(request).read())
-    except Exception, e:
+    except Exception as e:
         response = {'results': None}
 
         if DEBUG:
@@ -176,17 +182,23 @@ account = parsed.account
 expand = parsed.expand
 _start = parsed.start
 _end = parsed.end
-start = to_timestamp(_start)
-end = to_timestamp(_end)
 
 default_start_used = _start == default_start
 calculate_project_start = default_start_used and account
 
+# convert all times to UTC
+start = to_timestamp(_start, to_utc=True and (not default_start_used))  # utc start time stamp
+end = to_timestamp(_end, to_utc=True)                                   # utc end time stamp
+_start = to_timestring(start)                                           # utc start time string
+_end = to_timestring(end)                                               # utc end time string
+
 if calculate_project_start:
-    target_start_date = get_project_start(account)
+    target_start_date = get_project_start(account)  # utc time string
+
     if target_start_date is not None:
-        _start = to_timestring(to_timestamp(target_start_date))
-        start = to_timestamp(_start)
+        start = to_timestamp(target_start_date, to_utc=False)
+        _start = to_timestring(start)
+
     elif DEBUG:
         print('[get_account_start({})] ERR'.format(account))
 
@@ -217,7 +229,7 @@ def get_cpu_usage(user=None, account=None):
 
     try:
         response = json.loads(urllib2.urlopen(request).read())
-    except Exception, e:
+    except Exception as e:
         response = {'count': 0, 'total_cpu_time': 0, 'total_amount': 0,
                     'response': [], 'next': None}
 
@@ -269,9 +281,9 @@ def process_account_query():
         job_count, cpu_usage, account_usage = get_cpu_usage(account=account)
 
     if not default_start_used:
-        print output_headers['account'], job_count, 'jobs,', '{:.2f}'.format(cpu_usage), 'CPUHrs,', account_usage, 'SUs.'
+        print('{} {} jobs, {:.2f} CPUHrs, {} SUs.'.format(output_headers['account'], job_count, cpu_usage, account_usage))
     else:
-        print output_headers['account'], job_count, 'jobs,', '{:.2f}'.format(cpu_usage), 'CPUHrs,', account_usage, 'SUs used from an allocation of', allocation, 'SUs.'
+        print('{} {} jobs, {:.2f} CPUHrs, {} SUs used from an allocation of {} SUs.'.format(output_headers['account'], job_count, cpu_usage, account_usage, allocation))
 
     if expand:
         user_url = ALLOCATION_USERS_ENDPOINT
@@ -307,15 +319,15 @@ def process_user_query():
 
     # use default start
     if default_start_used:
-        _start = default_start
-        start = to_timestamp(default_start)
+        _start = default_start + 'Z'
+        start = to_timestamp(default_start, to_utc=False)
 
     total_jobs, total_cpu, total_usage = get_cpu_usage(user)
     if total_jobs == total_cpu == total_usage == -1:
         print('ERR: User not found: {}'.format(user))
         return
 
-    print output_headers['user'], total_jobs, 'jobs,', '{:.2f}'.format(total_cpu), 'CPUHrs,', total_usage, 'SUs used.'
+    print('{} {} jobs, {:.2f} CPUHrs, {} SUs used.'.format(output_headers['user'], total_jobs, total_cpu, total_usage))
 
     if expand:
         user_allocation_url = ALLOCATION_USERS_ENDPOINT
@@ -335,7 +347,7 @@ for req_type in output_headers.keys():
             print('ERROR: Start time ({}) requested is after end time ({}).'.format(_start, _end))
             exit(0)
 
-        if to_timestamp('2020-06-01') > start:
+        if to_timestamp('2020-06-01', to_utc=False) > start:
             print('INFO: Information might be inaccurate, for accurate information contact BRC support (brc-hpc-help@berkeley.edu).')
 
         if req_type == 'user':
@@ -347,11 +359,11 @@ for req_type in output_headers.keys():
 
             process_account_query()
 
-    except urllib2.URLError, e:
+    except urllib2.URLError as e:
         print('ERROR: Could not connect to backend, contact BRC Support (brc-hpc-help@berkeley.edu) if problem persists.')
         if DEBUG:
             print('__main__ ERR: {}'.format(e))
 
-    except Exception, e:
+    except Exception as e:
         if DEBUG:
             print('__main__ ERR: {}'.format(e))
