@@ -1,11 +1,13 @@
 #!/usr/bin/python2
-import urllib2
-import urllib
-import json
-import time
-import string
+import argparse
 from collections import defaultdict
+import json
 import os
+import string
+import time
+import urllib
+
+import urllib2
 
 
 # staging is hit iff DBEUG is True
@@ -18,9 +20,14 @@ docstr = '''
 '''.format(VERSION)
 
 MODE_MYBRC = 'mybrc'
-MODE_MYLRC = 'mybrc'
+MODE_MYLRC = 'mylrc'
 
-MODE = 'mybrc'
+parser = argparse.ArgumentParser(description=docstr)
+parser.add_argument('-T', dest='MODE',
+                    help='which target api to use', required=True,
+                    choices=[MODE_MYBRC, MODE_MYLRC])
+parsed = parser.parse_args()
+MODE = parsed.MODE
 TARGET = 'mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov'
 
 # production

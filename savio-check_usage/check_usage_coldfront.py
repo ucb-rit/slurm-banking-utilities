@@ -1,13 +1,13 @@
 #!/usr/bin/python
 import argparse
-import datetime
-import time
-import getpass
 import calendar
+import datetime
+import getpass
+import json
+import time
+import urllib
 
 import urllib2
-import urllib
-import json
 
 
 # staging is hit iff DEBUG is True
