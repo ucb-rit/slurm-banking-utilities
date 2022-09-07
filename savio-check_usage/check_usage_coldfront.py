@@ -5,6 +5,7 @@ import datetime
 import getpass
 import json
 import time
+import socket
 import urllib
 
 import urllib2
@@ -14,12 +15,26 @@ import urllib2
 # production is hit iff DEBUG is False
 DEBUG = False
 
+# ======
+
 VERSION = 2.0
 docstr = '''
 [version: {}]
 '''.format(VERSION)
 
-BASE_URL = 'http://scgup-dev.lbl.gov:8000/api/' if DEBUG else 'https://mybrc.brc.berkeley.edu/api/'
+# get runtime information
+USE_MYBRC = 'brc' in socket.gethostname()
+USE_MYLRC = not USE_MYBRC
+
+SUPPORT_TEAM = 'BRC' if USE_MYBRC else 'LRC'
+SUPPORT_EMAIL = 'brc-hpc-help@berkeley.edu' if USE_MYBRC else 'hpcshelp@lbl.gov'
+
+# set target
+if USE_MYBRC:
+    BASE_URL = 'http://scgup-dev.lbl.gov/api/' if DEBUG else 'https://mybrc.brc.berkeley.edu/api/'
+else:
+    BASE_URL = 'http://scgup-dev.lbl.gov:8443/api/' if DEBUG else 'https://mylrc.lbl.gov/api/'
+
 ALLOCATION_ENDPOINT = BASE_URL + 'allocations/'
 ALLOCATION_USERS_ENDPOINT = BASE_URL + 'allocation_users/'
 JOB_ENDPOINT = BASE_URL + 'jobs/'
@@ -187,16 +202,16 @@ default_start_used = _start == default_start
 calculate_project_start = default_start_used and account
 
 # convert all times to UTC
-start = to_timestamp(_start, to_utc=True and (not default_start_used))  # utc start time stamp
-end = to_timestamp(_end, to_utc=True)                                   # utc end time stamp
-_start = to_timestring(start)                                           # utc start time string
-_end = to_timestring(end)                                               # utc end time string
+start = to_timestamp(_start, to_utc=True)  # utc start time stamp
+end = to_timestamp(_end, to_utc=True)      # utc end time stamp
+_start = to_timestring(start)              # utc start time string
+_end = to_timestring(end)                  # utc end time string
 
 if calculate_project_start:
-    target_start_date = get_project_start(account)  # utc time string
+    target_start_date = get_project_start(account)  # local time string
 
     if target_start_date is not None:
-        start = to_timestamp(target_start_date, to_utc=False)
+        start = to_timestamp(target_start_date, to_utc=True)
         _start = to_timestring(start)
 
     elif DEBUG:
@@ -263,7 +278,8 @@ def process_account_query():
         if DEBUG:
             print('[process_account_query()] ERR')
 
-        raise urllib2.URLError('Backend Error, contact BRC Support (brc-hpc-help@berkeley.edu).')
+        raise urllib2.URLError('Backend Error, contact {} Support ({}).'
+                               .format(SUPPORT_TEAM, SUPPORT_EMAIL))
 
     allocation = response[0]['value']
     allocation_attribute_id = response[0]['id']
@@ -274,7 +290,8 @@ def process_account_query():
         try:
             account_usage = response[0]['usage']['value']
         except KeyError as e:
-            raise urllib2.URLError('Backend Error, contact BRC Support (brc-hpc-help@berkeley.edu).')
+            raise urllib2.URLError('Backend Error, contact {} Support ({}).'
+                                   .format(SUPPORT_TEAM, SUPPORT_EMAIL))
         job_count, cpu_usage, _ = get_cpu_usage(account=account)
     else:
         # get usage from jobs
@@ -317,11 +334,6 @@ def process_account_query():
 def process_user_query():
     global start, _start
 
-    # use default start
-    if default_start_used:
-        _start = default_start + 'Z'
-        start = to_timestamp(default_start, to_utc=False)
-
     total_jobs, total_cpu, total_usage = get_cpu_usage(user)
     if total_jobs == total_cpu == total_usage == -1:
         print('ERR: User not found: {}'.format(user))
@@ -347,8 +359,9 @@ for req_type in output_headers.keys():
             print('ERROR: Start time ({}) requested is after end time ({}).'.format(_start, _end))
             exit(0)
 
-        if to_timestamp('2020-06-01', to_utc=False) > start:
-            print('INFO: Information might be inaccurate, for accurate information contact BRC support (brc-hpc-help@berkeley.edu).')
+        if to_timestamp('2020-06-01', to_utc=True) > start:
+            print('INFO: Information might be inaccurate, for accurate information contact {} support ({}).'
+                  .format(SUPPORT_TEAM, SUPPORT_EMAIL))
 
         if req_type == 'user':
             process_user_query()
@@ -360,7 +373,8 @@ for req_type in output_headers.keys():
             process_account_query()
 
     except urllib2.URLError as e:
-        print('ERROR: Could not connect to backend, contact BRC Support (brc-hpc-help@berkeley.edu) if problem persists.')
+        print('ERROR: Could not connect to backend, contact {} Support ({}) if problem persists.'
+              .format(SUPPORT_TEAM, SUPPORT_EMAIL))
         if DEBUG:
             print('__main__ ERR: {}'.format(e))
 
