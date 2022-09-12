@@ -8,6 +8,7 @@ import datetime
 import calendar
 import subprocess
 import argparse
+import datetime
 import logging
 
 
@@ -15,6 +16,8 @@ timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
 timestamp_format_minimal = '%Y-%m-%d'
 docstr = '''
 Sync running jobs between MyBRC-DB with Slurm-DB.
+By Default, will launch in DEBUG mode where data is only collected and logged, not PUSHED upstream.
+To actually update data upstream, look at the --PUSH flag.
 '''
 
 
@@ -52,13 +55,13 @@ parser.add_argument('-e', dest='end', type=check_valid_date,
 parser.add_argument('--target', dest='target',
                     help='API endpoint to hit. NOTE: this url should end with a "/", example: https://mybrc.brc.berkeley.edu/api/',
                     default='https://mybrc.brc.berkeley.edu/api/')
-parser.add_argument('--debug', dest='debug', action='store_true',
-                    help='launch script in DEBUG mode, this will not push updates to the TARGET and write debug logs.')
+parser.add_argument('--PUSH', dest='push', action='store_true',
+                    help='launch script in PROD mode, this will PUSH updates to the TARGET.')
 
 parsed = parser.parse_args()
 START = parsed.start
 END = parsed.end
-DEBUG = parsed.debug
+DEBUG = not parsed.push
 BASE_URL = parsed.target
 
 LOG_FILE = 'update_jobs_coldfront_debug.log' if DEBUG else 'update_jobs_coldfront.log'
@@ -311,6 +314,13 @@ else:
     print('DEBUG: collected {} jobs to update in mybrcdb...'.format(len(table)))
     logging.info('DEBUG: collected {} jobs to update in mybrcdb...'.format(len(table)))
 
+    for jobid, job in table.items():
+        logging.info('{} COLLECTED : {}'.format(jobid, job))
+
+    print('DEBUG run complete, updated 0 jobs.')
+    logging.info('DEBUG run complete, updated 0 jobs.')
+    exit(0)
+
 counter = 0
 for jobid, job in table.items():
     request_data = urllib.urlencode(job)
@@ -333,10 +343,5 @@ for jobid, job in table.items():
     except urllib2.HTTPError as e:
         logging.warning('ERROR occured for jobid: {} REASON: {}'.format(jobid, e.reason))
 
-if not DEBUG:
-    print('run complete, updated {} jobs.'.format(counter))
-    logging.info('run complete, updated {} jobs.'.format(counter))
-
-else:
-    print('DEBUG run complete, updated 0 jobs.')
-    logging.info('DEBUG run complete, updated 0 jobs.')
+print('run complete, updated {} jobs.'.format(counter))
+logging.info('run complete, updated {} jobs.'.format(counter))

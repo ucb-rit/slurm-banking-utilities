@@ -169,8 +169,16 @@ def get_project_start(project):
 
         return None
 
-    creation = response[0]['start_date']
-    return creation.split('.')[0] if '.' in creation else creation
+    try:
+        creation = response[0]['start_date']
+        return creation.split('.')[0] if '.' in creation else creation
+    except Exception as e:
+        if DEBUG:
+            print('[get_project_start({}, {})] ERR: {}'.format(project, user, e))
+
+        print('ERR: information missing in {} database, contact Support ({}) if problem persists.'
+              .format(SUPPORT_TEAM, SUPPORT_EMAIL))
+        exit(0)
 
 
 current_month = datetime.datetime.now().month
@@ -278,7 +286,7 @@ def process_account_query():
         if DEBUG:
             print('[process_account_query()] ERR')
 
-        raise urllib2.URLError('Backend Error, contact {} Support ({}).'
+        raise urllib2.URLError('ERR: Backend Error, contact {} Support ({}).'
                                .format(SUPPORT_TEAM, SUPPORT_EMAIL))
 
     allocation = response[0]['value']
@@ -290,7 +298,7 @@ def process_account_query():
         try:
             account_usage = response[0]['usage']['value']
         except KeyError as e:
-            raise urllib2.URLError('Backend Error, contact {} Support ({}).'
+            raise urllib2.URLError('ERR: Backend Error, contact {} Support ({}).'
                                    .format(SUPPORT_TEAM, SUPPORT_EMAIL))
         job_count, cpu_usage, _ = get_cpu_usage(account=account)
     else:
@@ -356,7 +364,7 @@ def process_user_query():
 for req_type in output_headers.keys():
     try:
         if start > end:
-            print('ERROR: Start time ({}) requested is after end time ({}).'.format(_start, _end))
+            print('ERR: Start time ({}) requested is after end time ({}).'.format(_start, _end))
             exit(0)
 
         if to_timestamp('2020-06-01', to_utc=True) > start:
@@ -373,7 +381,7 @@ for req_type in output_headers.keys():
             process_account_query()
 
     except urllib2.URLError as e:
-        print('ERROR: Could not connect to backend, contact {} Support ({}) if problem persists.'
+        print('ERR: Could not connect to backend, contact {} Support ({}) if problem persists.'
               .format(SUPPORT_TEAM, SUPPORT_EMAIL))
         if DEBUG:
             print('__main__ ERR: {}'.format(e))
