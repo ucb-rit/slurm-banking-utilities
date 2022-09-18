@@ -67,11 +67,11 @@ def to_timestring(timestamp):
 
 parser = argparse.ArgumentParser(description=docstr)
 parser.add_argument('-s', dest='start', type=check_valid_date,
-                    help='starttime for the query period (YYYY-MM-DD[THH:MM:SS])')
+                    help='starttime for the query period (YYYY-MM-DD[THH:MM:SS]). Defaults to start of current allocation period.')
 parser.add_argument('-e', dest='end', type=check_valid_date,
-                    help='endtime for the query period (YYYY-MM-DD[THH:MM:SS])',
+                    help='endtime for the query period (YYYY-MM-DD[THH:MM:SS]). Defaults to NOW.',
                     default=datetime.datetime.utcnow().strftime(timestamp_format_complete))
-parser.add_argument('-T', dest='MODe',
+parser.add_argument('-T', dest='MODE',
                     help='which target API to use', required=True,
                     choices=[MODE_MYBRC, MODE_MYLRC])
 parser.add_argument('--PUSH', dest='push', action='store_true',
@@ -85,7 +85,7 @@ MODE = parsed.MODE
 
 PRICE_FILE = '/etc/slurm/bank-config.toml'
 CONFIG_FILE = 'sync_running_jobs_{}.conf'.format(MODE)
-LOG_FILE = ('sync_running_jobs_{}_debug.log' if DEBUG else 'sync_running_jobs_{}_debug.log').format(MODE)
+LOG_FILE = ('sync_running_jobs_{}_debug.log' if DEBUG else 'sync_running_jobs_{}.log').format(MODE)
 BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
 
 if START is None:

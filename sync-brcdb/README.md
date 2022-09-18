@@ -1,57 +1,78 @@
-# Sync BRCDB Scripts
+# Sync Scripts
 
 The purpose of these scripts is to remove the inconsistencies between SlurmDB
-and MyBRC DB. These inconsistencies might happen due to downtime of the MyBRC
+and MyBRC/MyLRC DB. These inconsistencies might happen due to downtime of the MyBRC/MyLRC
 API or the Slurm Banking Plugins, and need to be patched up on regular basis to
 avoid over/under charging users.
 
-#### sync_brcdb.py
+#### reverse_sync.py
 
-- **DEPRECATED**
-- takes no arguments, and requires `filter_auth.conf` config file in same folder
-  containing a MyBRC access token
-- pulls Jobs left in `RUNNING` state in **OLD** MyBRC db and pushes the actual
-  job complete times, SU usages, and other missing details to API by collecting
-  live data from Slurm using `sacct` commands
+**purpose:**
 
-#### update_jobs_coldfront.py
+1. collects accounts from MyBRC API
+2. outputs commands to update allocation values in SLURM
+3. you can check then run these output commands to perform actual updates
 
-- takes optional arguments: start and end date; requires `update_jobs_coldfront.conf`
-  config file in same folder, it will contain a MyBRC (coldfront) access token
-- default start-end period is the current allocation, ie by default, only jobs
-  in current allocation will get updated in MyBRC db
-- pulls Jobs left in `RUNNING` state in MyBRC db and pushes the actual job
-  complete times, SU usages, and other missing details to API by collecting
-  live data from Slurm using `sacct` commands
-- may need to run several times at first run (as it has a max limit of jobs it
-  can update at one time)
-- optionally takes **--debug** and **--target** flags to specify mode and target endpoint
-  to use (default is production coldfront)
+**usage:**
+
+```sh
+$ python reverse_sync.py
+```
+
+**notes:**
+
+- requires `reverse_sync.conf` file, which contains API token
+
+#### sync_running_jobs.py
+
+**purpose:**
+
+1. collects `running` jobs from `TARGET` (MyBRC/MyLRC API)
+2. collects updated stats about these jobs, from SLURM
+3. pushes updated job stats to `TARGET` (MyBRC/MyLRC API)
+
+**usage:**
+
+```sh
+$ python sync_running_jobs.py -T mybrc
+```
+
+**notes:**
+
+- requires `sync_running_jobs_{mybrc/mylrc}.conf` files, which contain API token
+- by default, it just collects and logs the changes it plans to make. To push
+  actual changes to `TARGET`, look at `--PUSH` flag.
+- default `-s` start is the current allocation period. (MyBRC: 06-01, MyLRC: 10-01)
+- default `-e` end is current time (NOW)
+- will overwrite data for jobs that already already exists in TARGET, with
+  latest data
+- generates `sync_running_jobs_{mybrc/mylrc}_{debug}.log` files for book keeping
+- may need to run this multiple times, as it has a max limit of jobs it can
+  update at one time. script will inform if this needs to be done
 
 #### full_sync_coldfront.py
 
-- takes optional arguments: start and end date; requires
-  `full_sync_coldfront.conf` config file in same folder, it will contain a MyBRC
-  (coldfront) access token
-- only jobs in current allocation will get updated in MyBRC db, the start date
-  is taken from MyBRC API **(this is not configurable)**. For projects which
-  dont have a start date in MyBRC db like `vector_`, default start date is used,
-  which is the last june 1
-- pulls all **accounts/projects** from MyBRC db (coldfront), and collects all
-  jobs in SLURM db belonging to each of those accounts. Pushes all of these
-  collected jobs to the MyBRC db
-- this will update jobs which have incorrect data (like start/end times,
-  usages), and also push missing jobs into the MyBRC db
-- may need to run several times at firs trun (as it has a max limit of jobs it
-  can update/push at one time)
-- optionally takes **--debug** and **--target** flags to specify mode and target endpoint
-  to use (default is production coldfront)
+**purpose:**
 
-**NOTE:**
-this means that `full_sync_coldfront.py` is a superset of `update_jobs_coldfront.py`,
-and the recommendation is to run the latter at frequent intervals, and the
-former full sync less-frequently.
+1. collects accounts from TARGET (MyBRC/MyLRC API)
+2. collects all jobs and their stats, for these accounts from SLURM
+3. pushes all updates to `TARGET` (MyBRC/MyLRC API)
 
-both the scripts produce comprehensive log files in the same folder, so their
-actions (all jobs updated / pushed) can be monitored and changes can be
-reverted if needed.
+**usage:**
+
+```sh
+$ python full_sync_coldfront.py -T mybrc
+```
+
+**notes:**
+
+- requires `full_sync_{mybrc/mylrc}.conf` files, which contain API token
+- by default, it just collects and logs the changes it plans to make. To push
+  actual changes to `TARGET`, look at `--PUSH` flag.
+- collects jobs after start of project allocation (queried from TARGET)
+- will overwrite data for jobs that already already exists in TARGET, with
+  latest data
+- generates `full_sync_{mybrc/mylrc}_{debug}.log` files for book keeping
+- may need to run this multiple times, as it has a max limit of jobs it can
+  update at one time. script will inform if this needs to be done
+
