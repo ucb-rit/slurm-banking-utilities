@@ -12,13 +12,17 @@ import datetime
 import logging
 
 
-timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
-timestamp_format_minimal = '%Y-%m-%d'
 docstr = '''
-Sync running jobs between MyBRC-DB with Slurm-DB.
+Sync running jobs between MyBRC/MyLRC DB with Slurm-DB.
 By Default, will launch in DEBUG mode where data is only collected and logged, not PUSHED upstream.
 To actually update data upstream, look at the --PUSH flag.
 '''
+
+
+timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
+timestamp_format_minimal = '%Y-%m-%d'
+MODE_MYBRC = 'mybrc'
+MODE_MYLRC = 'mylrc'
 
 
 def check_valid_date(s):
@@ -41,20 +45,35 @@ def check_valid_date(s):
         return s
 
 
-current_month = datetime.datetime.now().month
-current_year = datetime.datetime.now().year
-default_start = current_year if current_month >= 6 else (current_year - 1)
+# date time string -> time stamp
+def to_timestamp(date_time, to_utc=False):
+    try:
+        dt_obj = datetime.datetime.strptime(date_time, timestamp_format_complete)
+    except ValueError:
+        dt_obj = datetime.datetime.strptime(date_time, timestamp_format_minimal)
+
+    if to_utc:
+        return time.mktime(dt_obj.timetuple())
+
+    else:
+        return calendar.timegm(dt_obj.timetuple())
+
+
+# utc time stamp -> utc date time string
+def to_timestring(timestamp):
+    date_time = datetime.datetime.utcfromtimestamp(timestamp)
+    return date_time.strftime(timestamp_format_complete) + 'Z', date_time
+
 
 parser = argparse.ArgumentParser(description=docstr)
 parser.add_argument('-s', dest='start', type=check_valid_date,
-                    help='starttime for the query period (YYYY-MM-DD[THH:MM:SS])',
-                    default='{}-06-01T00:00:00'.format(default_start))
+                    help='starttime for the query period (YYYY-MM-DD[THH:MM:SS])')
 parser.add_argument('-e', dest='end', type=check_valid_date,
                     help='endtime for the query period (YYYY-MM-DD[THH:MM:SS])',
                     default=datetime.datetime.utcnow().strftime(timestamp_format_complete))
-parser.add_argument('--target', dest='target',
-                    help='API endpoint to hit. NOTE: this url should end with a "/", example: https://mybrc.brc.berkeley.edu/api/',
-                    default='https://mybrc.brc.berkeley.edu/api/')
+parser.add_argument('-T', dest='MODe',
+                    help='which target API to use', required=True,
+                    choices=[MODE_MYBRC, MODE_MYLRC])
 parser.add_argument('--PUSH', dest='push', action='store_true',
                     help='launch script in PROD mode, this will PUSH updates to the TARGET.')
 
@@ -62,19 +81,31 @@ parsed = parser.parse_args()
 START = parsed.start
 END = parsed.end
 DEBUG = not parsed.push
-BASE_URL = parsed.target
+MODE = parsed.MODE
 
-LOG_FILE = 'update_jobs_coldfront_debug.log' if DEBUG else 'update_jobs_coldfront.log'
 PRICE_FILE = '/etc/slurm/bank-config.toml'
-CONFIG_FILE = 'update_jobs_coldfront.conf'
+CONFIG_FILE = 'sync_running_jobs_{}.conf'.format(MODE)
+LOG_FILE = ('sync_running_jobs_{}_debug.log' if DEBUG else 'sync_running_jobs_{}_debug.log').format(MODE)
+BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
+
+if START is None:
+    current_month = datetime.datetime.now().month
+    current_year = datetime.datetime.now().year
+    break_month = 6 if MODE == MODE_MYBRC else 10
+    year = current_year if current_month >= break_month else (current_year - 1)
+    default_start = '{}-{}-01T00:00:00'.format(year, break_month)
+    START = default_start
+
+# convert to UTC
+START = to_timestring(to_timestamp(START, to_utc=True))
 
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     format='%(asctime)s %(levelname)-8s %(message)s',
                     datefmt='%Y-%m-%dT%H:%M:%S')
 
 if not os.path.exists(CONFIG_FILE):
-    print('config file {} missing...'.format(CONFIG_FILE))
-    logging.info('auth config file missing [{}], exiting run...'.format(CONFIG_FILE))
+    print('config file {} missing'.format(CONFIG_FILE))
+    logging.info('auth config file missing [{}], exiting run'.format(CONFIG_FILE))
     exit(0)
 
 with open(CONFIG_FILE, 'r') as f:
@@ -83,30 +114,8 @@ with open(CONFIG_FILE, 'r') as f:
 if DEBUG:
     print('---DEBUG RUN---')
 
-print('starting run, using endpoint {} ...'.format(BASE_URL))
-logging.info('starting run, using endpoint {} ...'.format(BASE_URL))
-
-
-def calculate_cpu_time(duration, num_cpus):
-    total_seconds = duration.total_seconds()
-    hours = total_seconds / 3600
-    return hours * float(num_cpus)
-
-
-def datestring_to_utc_timestamp(dt):
-    try:
-        return calendar.timegm(time.strptime(dt, timestamp_format_complete))
-    except:
-        return calendar.timegm(time.strptime(dt, timestamp_format_minimal))
-
-
-def utc_timestamp_to_string(dt):
-    candidate = datetime.datetime.utcfromtimestamp(dt)
-    return candidate.strftime('%Y-%m-%dT%H:%M:%SZ'), candidate
-
-
-def calculate_time_duration(start, end):
-    return datetime.datetime.utcfromtimestamp(datestring_to_utc_timestamp(end)) - datetime.datetime.utcfromtimestamp(datestring_to_utc_timestamp(start))
+print('starting run, using endpoint {} START: {}'.format(BASE_URL, START))
+logging.info('starting run, using endpoint {} START: {}'.format(BASE_URL, START))
 
 
 def get_price_per_hour(partition):
@@ -141,17 +150,16 @@ def get_price_per_hour(partition):
     return target
 
 
-def calculate_hours(duration):
-    total_seconds = duration.total_seconds()
-    hours = total_seconds / 3600
-    return hours
+def calculate_hours(duration_seconds):
+    return duration_seconds / 3600
 
 
-def calculate_amount(partition, cpu_count, duration):
-    pphr = get_price_per_hour(partition)
-    duration_hrs = calculate_hours(duration)
-    cpu_count = int(cpu_count)
-    return round(pphr * cpu_count * duration_hrs, 2)
+def calculate_amount(partition, cpu_count, duration_hrs):
+    return round(get_price_per_hour(partition) * int(cpu_count) * duration_hrs, 2)
+
+
+def calculate_cpu_time(num_cpus, duration_hrs):
+    return duration_hrs * float(num_cpus)
 
 
 def node_list_format(nodelist):
@@ -173,9 +181,9 @@ def node_list_format(nodelist):
     return table
 
 
-def paginate_requests():
-    start_ts = datestring_to_utc_timestamp(START)
-    end_ts = datestring_to_utc_timestamp(END)
+def get_running_jobs():
+    start_ts = to_timestamp(START)
+    end_ts = to_timestamp(END)
 
     request_params = {'jobstatus': 'RUNNING',
                       'start_time': start_ts, 'end_time': end_ts}
@@ -186,8 +194,8 @@ def paginate_requests():
         response = json.loads(urllib2.urlopen(req).read())
     except urllib2.URLError as e:
         if DEBUG:
-            print('[paginate_requests()] failed: {} {}'.format(request_params, e))
-            logging.error('[paginate_requests()] failed: {} {}'.format(request_params, e))
+            print('[get_running_jobs()] failed: {} {}'.format(request_params, e))
+            logging.error('[get_running_jobs()] failed: {} {}'.format(request_params, e))
 
         return []
 
@@ -208,51 +216,49 @@ def paginate_requests():
                 print("\tgetting page: {}".format(current_page))
 
             if current_page > 50:
-                print('too many jobs to update at once, rerun script after this run completes...')
-                logging.warning('too many jobs to update at once, rerun script after this run completes...')
+                print('too many jobs to update at once, rerun script after this run completes')
+                logging.warning('too many jobs to update at once, rerun script after this run completes')
                 break
 
         except urllib2.URLError as e:
             response['next'] = None
 
             if DEBUG:
-                print('[paginate_requests()] failed: {}'.format(e))
-                logging.error('[paginate_requests()] failed: {}'.format(e))
+                print('[get_running_jobs()] failed: {}'.format(e))
+                logging.error('[get_running_jobs()] failed: {}'.format(e))
 
     return job_table
 
 
-print('gathering data from mybrcdb...')
-logging.info('gathering data from mybrcdb...')
+print('gathering running jobs from {}db'.format(MODE))
+logging.info('gathering running jobs from {}db'.format(MODE))
 
-job_table = paginate_requests()
+# collect jobs
 jobs = ''
-for job in job_table:
+for job in get_running_jobs():
     jobs += job['jobslurmid'] + '\n'
 
-print('gathering data from slurmdb...')
-logging.info('gathering data from slurmdb...')
+print('gathering latest state from slurmdb')
+logging.info('gathering latest state from slurmdb')
 lines = jobs.splitlines()
 
-central = ''
+# collect job stats from slurm
+jobids_str = ''
 for line in lines:
-    central += line.strip() + ','
-central = central[:-1]
+    jobids_str += line.strip() + ','
+jobids_str = jobids_str[:-1]
 
-out = subprocess.Popen(['sacct', '-j', central,
+out = subprocess.Popen(['sacct', '-j', jobids_str,
                         '--format=JobId,Submit,Start,End,UID,Account,State,Partition,QOS,NodeList,AllocCPUS,ReqNodes,AllocNodes,CPUTimeRAW,CPUTime', '-n', '-P'],
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+job_stats = out.communicate()[0].split_lines()
 
+print('parsing jobs')
+logging.info('parsing jobs')
 
-outer, _ = out.communicate()
-out = outer.splitlines()
-
-print('parsing jobs...')
-logging.info('parsing jobs...')
-
+# parse data
 table = {}
-param_count = 15
-for current in out:
+for current in job_stats:
     current = current.split('|')
     current = [str(temp.decode('utf-8')) for temp in current]
     jobid, submit, start, end, uid, account, state, partition, qos, nodelist, alloc_cpus, req_nodes, alloc_nodes, cpu_time_raw, cpu_time = current
@@ -274,16 +280,14 @@ for current in out:
         state = 'COMPLETING'
 
     try:
-        duration = calculate_time_duration(start, end)
+        submit, _ = to_timestring(to_timestamp(submit, to_utc=True))
+        start, _start = to_timestring(to_timestamp(start, to_utc=True))
+        end, _end = to_timestring(to_timestamp(end, to_utc=True))
+        raw_time_hrs = calculate_hours((_end - _start).total_seconds())
+
+        cpu_time = calculate_cpu_time(alloc_cpus, raw_time_hrs)
+        amount = calculate_amount(partition, alloc_cpus, raw_time_hrs)
         node_list_converted = node_list_format(nodelist)
-        cpu_time = calculate_cpu_time(duration, alloc_cpus)
-        amount = calculate_amount(partition, alloc_cpus, duration)
-
-        submit, _ = utc_timestamp_to_string(datestring_to_utc_timestamp(submit))
-        start, _start = utc_timestamp_to_string(datestring_to_utc_timestamp(start))
-        end, _end = utc_timestamp_to_string(datestring_to_utc_timestamp(end))
-
-        raw_time = (_end - _start).total_seconds() / 3600
 
         table[jobid] = {
             'jobslurmid': jobid,
@@ -300,7 +304,7 @@ for current in out:
             'num_cpus': int(alloc_cpus),
             'num_req_nodes': int(req_nodes),
             'num_alloc_nodes': int(alloc_nodes),
-            'raw_time': raw_time,
+            'raw_time': raw_time_hrs,
             'cpu_time': float(cpu_time)}
 
     except Exception as e:
@@ -308,11 +312,12 @@ for current in out:
 
 
 if not DEBUG:
-    print('updating mybrcdb with {} jobs...'.format(len(table)))
-    logging.info('updating mybrcdb with {} jobs...'.format(len(table)))
+    print('updating mybrcdb with {} jobs'.format(len(table)))
+    logging.info('updating mybrcdb with {} jobs'.format(len(table)))
+
 else:
-    print('DEBUG: collected {} jobs to update in mybrcdb...'.format(len(table)))
-    logging.info('DEBUG: collected {} jobs to update in mybrcdb...'.format(len(table)))
+    print('DEBUG: collected {} jobs to update in mybrcdb'.format(len(table)))
+    logging.info('DEBUG: collected {} jobs to update in mybrcdb'.format(len(table)))
 
     for jobid, job in table.items():
         logging.info('{} COLLECTED : {}'.format(jobid, job))
@@ -321,6 +326,7 @@ else:
     logging.info('DEBUG run complete, updated 0 jobs.')
     exit(0)
 
+# push data
 counter = 0
 for jobid, job in table.items():
     request_data = urllib.urlencode(job)
@@ -331,9 +337,7 @@ for jobid, job in table.items():
     req.get_method = lambda: 'PUT'
 
     try:
-        if not DEBUG:
-            json.loads(urllib2.urlopen(req).read())
-
+        json.loads(urllib2.urlopen(req).read())
         logging.info('{} UPDATED : {}'.format(jobid, job))
         counter += 1
 

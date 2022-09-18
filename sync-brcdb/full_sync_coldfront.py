@@ -11,35 +11,47 @@ import logging
 import argparse
 
 
-timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
-timestamp_format_minimal = '%Y-%m-%d'
 docstr = '''
-Full Sync jobs between MyBRC-DB with Slurm-DB.
+Sync projects (and all their jobs) between MyBRC/MyLRC with Slurm-DB.
+By Default, will launch in DEBUG mode where data is only collected and logged, not PUSHED upstream.
+To actually update data upstream, look at the --PUSH flag.
 '''
 
+timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
+timestamp_format_minimal = '%Y-%m-%d'
+MODE_MYBRC = 'mybrc'
+MODE_MYLRC = 'mylrc'
 
 parser = argparse.ArgumentParser(description=docstr)
-parser.add_argument('--target', dest='target',
-                    help='API endpoint to hit. NOTE: this url should end with a "/", example: https://mybrc.brc.berkeley.edu/api/',
-                    default='https://mybrc.brc.berkeley.edu/api/')
-parser.add_argument('--debug', dest='debug', action='store_true',
-                    help='launch script in DEBUG mode, this will not push updates to the TARGET and write debug logs.')
+parser.add_argument('-T', dest='MODE',
+                    help='which target API to use', required=True,
+                    choices=[MODE_MYBRC, MODE_MYLRC])
+parser.add_argument('--PUSH', dest='push', action='store_true',
+                    help='launch script in PROD mode, this will PUSH updates to the target API.')
 
-parser = parser.parse_args()
-DEBUG = parser.debug
-BASE_URL = parser.target
+parsed = parser.parse_args()
+DEBUG = not parsed.push
+MODE = parsed.MODE
 
-LOG_FILE = 'full_sync_coldfront_debug.log' if DEBUG else 'full_sync_coldfront.log'
 PRICE_FILE = '/etc/slurm/bank-config.toml'
-CONFIG_FILE = 'full_sync_coldfront.conf'
+CONFIG_FILE = 'full_sync_{}.conf'.format(MODE)
+LOG_FILE = ('full_sync_{}_debug.log' if DEBUG else 'full_sync_{}.log').format(MODE)
+BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
+
+# default start date for given mode
+current_month = datetime.datetime.now().month
+current_year = datetime.datetime.now().year
+break_month = 6 if MODE == MODE_MYBRC else 10
+year = current_year if current_month >= break_month else (current_year - 1)
+default_start = '{}-{}-01T00:00:00'.format(year, break_month)
 
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     format='%(asctime)s %(levelname)-8s %(message)s',
                     datefmt='%Y-%m-%dT%H:%M:%S')
 
 if not os.path.exists(CONFIG_FILE):
-    print('config file {} missing...'.format(CONFIG_FILE))
-    logging.info('auth config file missing [{}], exiting run...'.format(CONFIG_FILE))
+    print('config file {} missing'.format(CONFIG_FILE))
+    logging.info('auth config file missing [{}], exiting run'.format(CONFIG_FILE))
     exit(0)
 
 with open(CONFIG_FILE, 'r') as f:
@@ -48,8 +60,8 @@ with open(CONFIG_FILE, 'r') as f:
 if DEBUG:
     print('---DEBUG RUN---')
 
-print('starting run, using endpoint {} ...'.format(BASE_URL))
-logging.info('starting run, using endpoint {} ...'.format(BASE_URL))
+print('starting run, using endpoint {} '.format(BASE_URL))
+logging.info('starting run, using endpoint {} '.format(BASE_URL))
 
 
 def calculate_cpu_time(duration, num_cpus):
@@ -171,8 +183,8 @@ def paginate_requests(url, params=None):
                 print('\tgetting page: {}'.format(current_page))
 
             if current_page > 50:
-                print('too many pages to sync at once, rerun script after this run completes...')
-                logging.warning('too many pages to sync at once, rerun script after this run completes...')
+                print('too many pages to sync at once, rerun script after this run completes')
+                logging.warning('too many pages to sync at once, rerun script after this run completes')
                 break
 
         except urllib2.URLError as e:
@@ -207,7 +219,8 @@ def single_request(url, params=None):
 
 def get_project_start(project):
     allocations_url = BASE_URL + 'allocations/'
-    response = single_request(allocations_url, {'project': project, 'resources': 'Savio Compute'})
+    compute_resources = '{} Compute'.format('Savio' if MODE == MODE_MYBRC else 'LAWRENCIUM')
+    response = single_request(allocations_url, {'project': project, 'resources': compute_resources})
     if not response or len(response) == 0:
         if DEBUG:
             print('[get_project_start({})] ERR'.format(project))
@@ -223,17 +236,12 @@ def get_project_start(project):
         return None
 
 
-print('gathering accounts from mybrcdb...')
-logging.info('gathering data from mybrcdb...')
+print('gathering accounts from {}db'.format(MODE))
+logging.info('gathering data from {}db'.format(MODE))
 
-current_month = datetime.datetime.now().month
-current_year = datetime.datetime.now().year
-default_start = current_year if current_month >= 6 else (current_year - 1)
-default_start = '{}-06-01T00:00:00'.format(default_start)
-
+# collect projects
 project_table = []
-project_table_unfiltered = paginate_requests(BASE_URL + 'projects/')
-for project in project_table_unfiltered:
+for project in paginate_requests(BASE_URL + 'projects/'):
     project_name = str(project['name'])
     project_start = get_project_start(project_name)
 
@@ -241,9 +249,10 @@ for project in project_table_unfiltered:
     project['start'] = default_start if not project_start else str(project_start)
     project_table.append(project)
 
-print('gathering jobs from slurmdb...')
-logging.info('gathering data from slurmdb...')
+print('gathering jobs from slurmdb')
+logging.info('gathering data from slurmdb')
 
+# collect jobs
 for index, project in enumerate(project_table):
     out, err = subprocess.Popen(['sacct', '-A', project['name'], '-S', project['start'],
                                  '--format=JobId,Submit,Start,End,UID,Account,State,Partition,QOS,NodeList,AllocCPUS,ReqNodes,AllocNodes,CPUTimeRAW,CPUTime', '-naPX'],
@@ -254,9 +263,10 @@ for index, project in enumerate(project_table):
         print('\tprogress: {}/{}'.format(index, len(project_table)))
 
 
-print('parsing jobs...')
-logging.info('parsing jobs...')
+print('parsing jobs')
+logging.info('parsing jobs')
 
+# parse data
 table = {}
 for project in project_table:
     for line in project['jobs']:
@@ -298,12 +308,21 @@ for project in project_table:
 
 
 if not DEBUG:
-    print('updating mybrcdb with {} jobs...'.format(len(table)))
-    logging.info('updating mybrcdb with {} jobs...'.format(len(table)))
-else:
-    print('DEBUG: collected {} jobs to update in mybrcdb...'.format(len(table)))
-    logging.info('DEBUG: collected {} jobs to update in mybrcdb...'.format(len(table)))
+    print('updating mybrcdb with {} jobs'.format(len(table)))
+    logging.info('updating mybrcdb with {} jobs'.format(len(table)))
 
+else:
+    print('DEBUG: collected {} jobs to update'.format(len(table)))
+    logging.info('DEBUG: collected {} jobs to update'.format(len(table)))
+
+    for jobid, job in table.items():
+        logging.info('{} COLLECTED : {}'.format(jobid, job))
+
+    print('DEBUG run complete, updated 0 jobs.')
+    logging.info('DEBUG run complete, updated 0 jobs.')
+    exit(0)
+
+# push data
 counter = 0
 for jobid, job in table.items():
     request_data = urllib.urlencode(job)
@@ -314,9 +333,7 @@ for jobid, job in table.items():
     req.get_method = lambda: 'PUT'
 
     try:
-        if not DEBUG:
-            json.loads(urllib2.urlopen(req).read())
-
+        json.loads(urllib2.urlopen(req).read())
         logging.info('{} PUSHED/UPDATED : {}'.format(jobid, job))
         counter += 1
 
@@ -326,10 +343,5 @@ for jobid, job in table.items():
     except urllib2.HTTPError as e:
         logging.warning('ERROR occured for jobid: {} REASON: {}'.format(jobid, e.reason))
 
-if not DEBUG:
-    print('run complete, pushed/updated {} jobs.'.format(counter))
-    logging.info('run complete, pushed/updated {} jobs.'.format(counter))
-
-else:
-    print('DEBUG run complete, updated 0 jobs.')
-    logging.info('DEBUG run complete, updated 0 jobs.')
+print('run complete, pushed/updated {} jobs.'.format(counter))
+logging.info('run complete, pushed/updated {} jobs.'.format(counter))

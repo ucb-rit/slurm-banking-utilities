@@ -178,7 +178,6 @@ for project in project_table:
         logging.error('[project: {0}] ERR, could not set allocation (value={1})'.format(project['name'], project['allocation']))
         continue
 
-    # TODO: print commands to file
     allocation_in_seconds = 60 * project['allocation']
     command = 'yes | sacctmgr modify account {0} set GrpTRESMins="cpu={1}"'.format(project['name'], allocation_in_seconds)
     commands += '\n' + command
