@@ -22,7 +22,31 @@ timestamp_format_minimal = '%Y-%m-%d'
 MODE_MYBRC = 'mybrc'
 MODE_MYLRC = 'mylrc'
 
+
+def check_valid_date(s):
+    '''check if date is in valid format(s)'''
+    complete, minimal = None, None
+
+    try:
+        complete = datetime.datetime.strptime(s, timestamp_format_complete)
+    except Exception:
+        pass
+
+    try:
+        minimal = datetime.datetime.strptime(s, timestamp_format_minimal)
+    except Exception:
+        pass
+
+    if not complete and not minimal:  # doesn't fit either format
+        raise argparse.ArgumentTypeError('Invalid time specification {}'.format(s))
+    else:
+        return s
+
+
 parser = argparse.ArgumentParser(description=docstr)
+parser.add_argument('-s', dest='start', type=check_valid_date,
+                    help='starttime for the query period (YYYY-MM-DD[THH:MM:SS]). '
+                         'If not specified, project start dates will be used to pull all jobs for all projects.')
 parser.add_argument('-T', dest='MODE',
                     help='which target API to use', required=True,
                     choices=[MODE_MYBRC, MODE_MYLRC])
@@ -32,6 +56,7 @@ parser.add_argument('--PUSH', dest='push', action='store_true',
 parsed = parser.parse_args()
 DEBUG = not parsed.push
 MODE = parsed.MODE
+START = parsed.start
 
 PRICE_FILE = '/etc/slurm/bank-config.toml'
 CONFIG_FILE = 'full_sync_{}.conf'.format(MODE)
@@ -41,9 +66,15 @@ BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYB
 # default start date for given mode
 current_month = datetime.datetime.now().month
 current_year = datetime.datetime.now().year
-break_month = 6 if MODE == MODE_MYBRC else 10
-year = current_year if current_month >= break_month else (current_year - 1)
+break_month = '06' if MODE == MODE_MYBRC else '10'
+year = current_year if current_month >= int(break_month) else (current_year - 1)
 default_start = '{}-{}-01T00:00:00'.format(year, break_month)
+
+if START is None:
+    START = default_start
+    use_project_start = True
+else:
+    use_project_start = False
 
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     format='%(asctime)s %(levelname)-8s %(message)s',
@@ -60,30 +91,35 @@ with open(CONFIG_FILE, 'r') as f:
 if DEBUG:
     print('---DEBUG RUN---')
 
-print('starting run, using endpoint {} '.format(BASE_URL))
-logging.info('starting run, using endpoint {} '.format(BASE_URL))
+print('starting run, using endpoint {}'.format(BASE_URL))
+logging.info('starting run, using endpoint {}'.format(BASE_URL))
+
+if use_project_start:
+    print('using project start dates')
+    logging.info('using project start dates')
+else:
+    print('using specified start date {}'.format(START))
+    logging.info('using specified start date {}'.format(START))
 
 
-def calculate_cpu_time(duration, num_cpus):
-    total_seconds = duration.total_seconds()
-    hours = total_seconds / 3600
-    return hours * float(num_cpus)
-
-
-def datestring_to_utc_timestamp(dt):
+# date time string -> time stamp
+def to_timestamp(date_time, to_utc=False):
     try:
-        return calendar.timegm(time.strptime(dt, timestamp_format_complete))
-    except:
-        return calendar.timegm(time.strptime(dt, timestamp_format_minimal))
+        dt_obj = datetime.datetime.strptime(date_time, timestamp_format_complete)
+    except ValueError:
+        dt_obj = datetime.datetime.strptime(date_time, timestamp_format_minimal)
+
+    if to_utc:
+        return time.mktime(dt_obj.timetuple())
+
+    else:
+        return calendar.timegm(dt_obj.timetuple())
 
 
-def utc_timestamp_to_string(dt):
-    candidate = datetime.datetime.utcfromtimestamp(dt)
-    return candidate.strftime('%Y-%m-%dT%H:%M:%SZ'), candidate
-
-
-def calculate_time_duration(start, end):
-    return datetime.datetime.utcfromtimestamp(datestring_to_utc_timestamp(end)) - datetime.datetime.utcfromtimestamp(datestring_to_utc_timestamp(start))
+# utc time stamp -> utc date time string
+def to_timestring(timestamp):
+    date_time = datetime.datetime.utcfromtimestamp(timestamp)
+    return date_time.strftime(timestamp_format_complete), date_time
 
 
 def get_price_per_hour(partition):
@@ -118,17 +154,16 @@ def get_price_per_hour(partition):
     return target
 
 
-def calculate_hours(duration):
-    total_seconds = duration.total_seconds()
-    hours = total_seconds / 3600
-    return hours
+def calculate_hours(duration_seconds):
+    return duration_seconds / 3600
 
 
-def calculate_amount(partition, cpu_count, duration):
-    pphr = get_price_per_hour(partition)
-    duration_hrs = calculate_hours(duration)
-    cpu_count = int(cpu_count)
-    return round(pphr * cpu_count * duration_hrs, 2)
+def calculate_amount(partition, cpu_count, duration_hrs):
+    return round(get_price_per_hour(partition) * int(cpu_count) * duration_hrs, 2)
+
+
+def calculate_cpu_time(num_cpus, duration_hrs):
+    return duration_hrs * float(num_cpus)
 
 
 def node_list_format(nodelist):
@@ -246,7 +281,7 @@ for project in paginate_requests(BASE_URL + 'projects/'):
     project_start = get_project_start(project_name)
 
     project['name'] = project_name
-    project['start'] = default_start if not project_start else str(project_start)
+    project['start'] = START if not project_start else str(project_start)
     project_table.append(project)
 
 print('gathering jobs from slurmdb')
@@ -254,7 +289,8 @@ logging.info('gathering data from slurmdb')
 
 # collect jobs
 for index, project in enumerate(project_table):
-    out, err = subprocess.Popen(['sacct', '-A', project['name'], '-S', project['start'],
+    start = project['start'] if use_project_start else START
+    out, err = subprocess.Popen(['sacct', '-A', project['name'], '-S', start,
                                  '--format=JobId,Submit,Start,End,UID,Account,State,Partition,QOS,NodeList,AllocCPUS,ReqNodes,AllocNodes,CPUTimeRAW,CPUTime', '-naPX'],
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()
     project['jobs'] = out.splitlines()
@@ -274,16 +310,14 @@ for project in project_table:
         jobid, submit, start, end, uid, account, state, partition, qos, nodelist, alloc_cpus, req_nodes, alloc_nodes, cpu_time_raw, cpu_time = values
 
         try:
-            duration = calculate_time_duration(start, end)
+            submit, _ = to_timestring(to_timestamp(submit, to_utc=False))
+            start, _start = to_timestring(to_timestamp(start, to_utc=False))
+            end, _end = to_timestring(to_timestamp(end, to_utc=False))
+            raw_time_hrs = calculate_hours((_end - _start).total_seconds())
+
+            cpu_time = calculate_cpu_time(alloc_cpus, raw_time_hrs)
+            amount = calculate_amount(partition, alloc_cpus, raw_time_hrs)
             node_list_converted = node_list_format(nodelist)
-            cpu_time = calculate_cpu_time(duration, alloc_cpus)
-            amount = calculate_amount(partition, alloc_cpus, duration)
-
-            submit, _ = utc_timestamp_to_string(datestring_to_utc_timestamp(submit))
-            start, _start = utc_timestamp_to_string(datestring_to_utc_timestamp(start))
-            end, _end = utc_timestamp_to_string(datestring_to_utc_timestamp(end))
-
-            raw_time = (_end - _start).total_seconds() / 3600
 
             table[jobid] = {
                 'jobslurmid': jobid,
@@ -300,7 +334,7 @@ for project in project_table:
                 'num_cpus': int(alloc_cpus),
                 'num_req_nodes': int(req_nodes),
                 'num_alloc_nodes': int(alloc_nodes),
-                'raw_time': raw_time,
+                'raw_time': raw_time_hrs,
                 'cpu_time': float(cpu_time)}
 
         except Exception as e:

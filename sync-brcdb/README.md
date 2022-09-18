@@ -69,6 +69,9 @@ $ python full_sync_coldfront.py -T mybrc
 - requires `full_sync_{mybrc/mylrc}.conf` files, which contain API token
 - by default, it just collects and logs the changes it plans to make. To push
   actual changes to `TARGET`, look at `--PUSH` flag.
+- when `-s` flag is specified, jobs starting from this date will be collected
+  for all projects. If not specified, project start dates will be used instead,
+  ie. all jobs for all projects will be updated.
 - collects jobs after start of project allocation (queried from TARGET)
 - will overwrite data for jobs that already already exists in TARGET, with
   latest data

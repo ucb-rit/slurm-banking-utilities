@@ -62,7 +62,7 @@ def to_timestamp(date_time, to_utc=False):
 # utc time stamp -> utc date time string
 def to_timestring(timestamp):
     date_time = datetime.datetime.utcfromtimestamp(timestamp)
-    return date_time.strftime(timestamp_format_complete) + 'Z', date_time
+    return date_time.strftime(timestamp_format_complete), date_time
 
 
 parser = argparse.ArgumentParser(description=docstr)
@@ -91,13 +91,13 @@ BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYB
 if START is None:
     current_month = datetime.datetime.now().month
     current_year = datetime.datetime.now().year
-    break_month = 6 if MODE == MODE_MYBRC else 10
-    year = current_year if current_month >= break_month else (current_year - 1)
+    break_month = '06' if MODE == MODE_MYBRC else '10'
+    year = current_year if current_month >= int(break_month) else (current_year - 1)
     default_start = '{}-{}-01T00:00:00'.format(year, break_month)
     START = default_start
 
 # convert to UTC
-START = to_timestring(to_timestamp(START, to_utc=True))
+START = to_timestring(to_timestamp(START, to_utc=True))[0]
 
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     format='%(asctime)s %(levelname)-8s %(message)s',
@@ -251,7 +251,7 @@ jobids_str = jobids_str[:-1]
 out = subprocess.Popen(['sacct', '-j', jobids_str,
                         '--format=JobId,Submit,Start,End,UID,Account,State,Partition,QOS,NodeList,AllocCPUS,ReqNodes,AllocNodes,CPUTimeRAW,CPUTime', '-n', '-P'],
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-job_stats = out.communicate()[0].split_lines()
+job_stats = out.communicate()[0].splitlines()
 
 print('parsing jobs')
 logging.info('parsing jobs')
@@ -280,9 +280,10 @@ for current in job_stats:
         state = 'COMPLETING'
 
     try:
-        submit, _ = to_timestring(to_timestamp(submit, to_utc=True))
-        start, _start = to_timestring(to_timestamp(start, to_utc=True))
-        end, _end = to_timestring(to_timestamp(end, to_utc=True))
+        # NOTE(vir): times in SLURM are UTC
+        submit, _ = to_timestring(to_timestamp(submit, to_utc=False))
+        start, _start = to_timestring(to_timestamp(start, to_utc=False))
+        end, _end = to_timestring(to_timestamp(end, to_utc=False))
         raw_time_hrs = calculate_hours((_end - _start).total_seconds())
 
         cpu_time = calculate_cpu_time(alloc_cpus, raw_time_hrs)

@@ -11,6 +11,8 @@ import urllib
 import urllib2
 
 
+# TOGGLES:
+
 # staging is hit iff DEBUG is True
 # production is hit iff DEBUG is False
 DEBUG = False
@@ -23,24 +25,25 @@ docstr = '''
 '''.format(VERSION)
 
 # get runtime information
-USE_MYBRC = 'brc' in socket.gethostname()
-USE_MYLRC = not USE_MYBRC
+MODE_MYBRC = 'mybrc'
+MODE_MYLRC = 'mylrc'
+MODE = MODE_MYBRC if 'brc' in socket.gethostname() else MODE_MYLRC
 
-SUPPORT_TEAM = 'BRC' if USE_MYBRC else 'LRC'
-SUPPORT_EMAIL = 'brc-hpc-help@berkeley.edu' if USE_MYBRC else 'hpcshelp@lbl.gov'
+# set contact information
+SUPPORT_TEAM = 'BRC' if MODE == MODE_MYBRC else 'LRC'
+SUPPORT_EMAIL = 'brc-hpc-help@berkeley.edu' if MODE == MODE_MYBRC else 'hpcshelp@lbl.gov'
 
-# set target
-if USE_MYBRC:
-    BASE_URL = 'http://scgup-dev.lbl.gov/api/' if DEBUG else 'https://mybrc.brc.berkeley.edu/api/'
-else:
-    BASE_URL = 'http://scgup-dev.lbl.gov:8443/api/' if DEBUG else 'https://mylrc.lbl.gov/api/'
+# constants
+timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
+timestamp_format_minimal = '%Y-%m-%d'
 
+BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
 ALLOCATION_ENDPOINT = BASE_URL + 'allocations/'
 ALLOCATION_USERS_ENDPOINT = BASE_URL + 'allocation_users/'
 JOB_ENDPOINT = BASE_URL + 'jobs/'
 
-timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
-timestamp_format_minimal = '%Y-%m-%d'
+if DEBUG:
+    BASE_URL = 'http://scgup-dev.lbl.gov/api/' if MODE == MODE_MYBRC else 'http://scgup-dev.lbl.gov:8443/api/'
 
 
 def red_str(vector):
@@ -70,8 +73,7 @@ def check_valid_date(s):
         pass
 
     if not complete and not minimal:  # doesn't fit either format
-        raise argparse.ArgumentTypeError(
-            'Invalid time specification {}'.format(s))
+        raise argparse.ArgumentTypeError('Invalid time specification {}'.format(s))
     else:
         return s
 
@@ -160,7 +162,8 @@ def single_request(url, params=None):
 
 def get_project_start(project):
     allocation_id_url = ALLOCATION_ENDPOINT
-    params = {'project': project, 'resources': 'Savio Compute'}
+    compute_resources = '{} Compute'.format('Savio' if MODE == MODE_MYBRC else 'LAWRENCIUM')
+    params = {'project': project, 'resources': compute_resources}
 
     response = single_request(allocation_id_url, params)
     if not response or len(response) == 0:
@@ -183,7 +186,9 @@ def get_project_start(project):
 
 current_month = datetime.datetime.now().month
 current_year = datetime.datetime.now().year
-default_start = '{}-06-01T00:00:00'.format(current_year if current_month >= 6 else (current_year - 1))
+break_month = '06' if MODE == MODE_MYBRC else '10'
+year = current_year if current_month >= int(break_month) else (current_year - 1)
+default_start = '{}-{}-01T00:00:00'.format(year, break_month)
 
 parser = argparse.ArgumentParser(description=docstr)
 parser.add_argument('-u', dest='user',
@@ -271,7 +276,8 @@ def get_cpu_usage(user=None, account=None):
 
 def process_account_query():
     allocation_id_url = ALLOCATION_ENDPOINT
-    response = single_request(allocation_id_url, {'project': account, 'resources': 'Savio Compute'})
+    compute_resources = '{} Compute'.format('Savio' if MODE == MODE_MYBRC else 'LAWRENCIUM')
+    response = single_request(allocation_id_url, {'project': account, 'resources': compute_resources})
     if not response or len(response) == 0:
         if DEBUG:
             print('[process_account_query()] ERR')
@@ -290,16 +296,16 @@ def process_account_query():
                                .format(SUPPORT_TEAM, SUPPORT_EMAIL))
 
     allocation = response[0]['value']
-    allocation_attribute_id = response[0]['id']
     allocation = int(float(allocation))
 
     if 'ac_' in account or 'co_' in account:
         # get usage from allocation attribute
         try:
             account_usage = response[0]['usage']['value']
-        except KeyError as e:
+        except KeyError:
             raise urllib2.URLError('ERR: Backend Error, contact {} Support ({}).'
                                    .format(SUPPORT_TEAM, SUPPORT_EMAIL))
+
         job_count, cpu_usage, _ = get_cpu_usage(account=account)
     else:
         # get usage from jobs
