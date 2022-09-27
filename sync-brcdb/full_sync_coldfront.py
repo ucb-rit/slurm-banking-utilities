@@ -85,6 +85,7 @@ if not os.path.exists(CONFIG_FILE):
     logging.info('auth config file missing [{}], exiting run'.format(CONFIG_FILE))
     exit(0)
 
+AUTH_TOKEN = None
 with open(CONFIG_FILE, 'r') as f:
     AUTH_TOKEN = f.read().strip()
 
@@ -344,6 +345,11 @@ for project in project_table:
 if not DEBUG:
     print('updating mybrcdb with {} jobs'.format(len(table)))
     logging.info('updating mybrcdb with {} jobs'.format(len(table)))
+
+    if AUTH_TOKEN is None:
+        print('ERR: auth token not present, CONFIG FILE: {}'.format(len(CONFIG_FILE)))
+        logging.info('ERR: auth token not present, CONFIG FILE: {}'.format(len(CONFIG_FILE)))
+        exit(0)
 
 else:
     print('DEBUG: collected {} jobs to update'.format(len(table)))
