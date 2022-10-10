@@ -4,13 +4,33 @@ import os
 import urllib
 import urllib2
 import json
+import argparse
 import subprocess
 
-DEBUG = False
-BASE_URL = 'https://mybrc.brc.berkeley.edu/api/'
 
-LOG_FILE = 'reverse_sync.log'
-CONFIG_FILE = 'reverse_sync.conf'
+docstr = '''
+Sync projects (and all their jobs) between MyBRC/MyLRC with Slurm-DB.
+This will update SLURM with the latest values for each job collected from MyBRC/MyLRC.
+
+This will only write out a file containing all changes to be made (corresponding slurm commands).
+It will not update ANY data in SLURM on its own. To do so, run the output file generated.
+'''
+
+MODE_MYBRC = 'mybrc'
+MODE_MYLRC = 'mylrc'
+
+parser = argparse.ArgumentParser(description=docstr)
+parser.add_argument('-T', dest='MODE',
+                    help='which target API to use', required=True,
+                    choices=[MODE_MYBRC, MODE_MYLRC])
+
+parsed = parser.parse_args()
+MODE = parsed.MODE
+DEBUG = False
+
+CONFIG_FILE = 'reverse_sync_{}.conf'.format(MODE)
+LOG_FILE = ('reverse_sync_{}_debug.log' if DEBUG else 'reverse_sync_{}.log').format(MODE)
+BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
 
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     format='%(asctime)s %(levelname)-8s %(message)s',
@@ -101,7 +121,8 @@ def single_request(url, params=None):
 
 def get_project_allocation(project_name):
     allocation_id_url = BASE_URL + 'allocations/'
-    response = single_request(allocation_id_url, {'project': project_name, 'resources': 'Savio Compute'})
+    compute_resources = '{} Compute'.format('Savio' if MODE == MODE_MYBRC else 'LAWRENCIUM')
+    response = single_request(allocation_id_url, {'project': project_name, 'resources': compute_resources})
     if not response or len(response) == 0:
         if DEBUG:
             print('[get_project_allocation({0})] ERR'.format(project_name))
@@ -123,7 +144,8 @@ def get_project_allocation(project_name):
 
 def get_project_start(project_name):
     allocations_url = BASE_URL + 'allocations/'
-    response = single_request(allocations_url, {'project': project_name, 'resources': 'Savio Compute'})
+    compute_resources = '{} Compute'.format('Savio' if MODE == MODE_MYBRC else 'LAWRENCIUM')
+    response = single_request(allocations_url, {'project': project_name, 'resources': compute_resources})
     if not response or len(response) == 0:
         if DEBUG:
             print('[get_project_start({0})] ERR'.format(project_name))
@@ -135,13 +157,14 @@ def get_project_start(project_name):
     if not creation:
         return None
 
-    creation = creation if '.' not in creation else creation.split('.')[0]
-    return '{0}T00:00:00'.format(creation)
+    return creation if '.' not in creation else creation.split('.')[0]
+    # return '{0}T00:00:00'.format(creation)
 
 
-print('gathering accounts from mybrcdb...')
-logging.info('gathering data from mybrcdb...')
+print('gathering accounts from {}db...'.format(MODE))
+logging.info('gathering data from {}db...'.format(MODE))
 
+# NOTE(vir): ignore abc and vector for now
 project_table = paginate_requests(BASE_URL + 'projects/')
 project_table = filter(
     lambda p: p['name'] != 'abc' and not p['name'].startswith('vector_'),
@@ -150,8 +173,8 @@ for project in project_table:
     project['allocation'] = get_project_allocation(project['name'])
     project['start'] = get_project_start(project['name'])
 
+# NOTE(vir): can use this to update fca.conf file
 '''
-# NOTE: can use this to update fca.conf file
 lines = []
 for project in project_table:
     if ('allocation' not in project) or ('name' not in project) or (project['allocation'] == None):
@@ -163,13 +186,8 @@ for project in project_table:
         project['name'], project['start'], project['allocation'], project['name']))
 '''
 
-if DEBUG:
-    print('debug run complete, exiting...')
-    logging.info('debug run complete, exiting...')
-    exit()
-
-print('writing data to slurmdb...')
-logging.info('writing data to slurmdb...')
+print('writing data to file (slurmdb commands)...')
+logging.info('writing data to file (slurmdb commands)...')
 
 commands = ''
 for project in project_table:
@@ -182,6 +200,7 @@ for project in project_table:
     command = 'yes | sacctmgr modify account {0} set GrpTRESMins="cpu={1}"'.format(project['name'], allocation_in_seconds)
     commands += '\n' + command
 
+    # NOTE(vir): actually update data in SLURM
     # out, _ = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True).communicate()
     # print('updated account: {}, allocation set to: {}, with error: {}'.format(project['name'], project['allocation'], out))
     # logging.info('updated account: {}, allocation set to: {}, with error: {}'.format(project['name'], project['allocation'], out))
@@ -189,10 +208,10 @@ for project in project_table:
 # print('updated allocation limits for {} accounts, run complete, exiting...'.format(len(project_table)))
 # logging.info('updated allocation limits for {} accounts, run complete, exiting...'.format(len(project_table)))
 
-with open('reverse_sync_output.sh', 'w') as f:
+with open('reverse_sync_output_{}.sh'.format(MODE), 'w') as f:
     f.writelines(commands)
 
-print('run complete, wrote output to reverse_sync_output.sh, exiting...')
-logging.info('run complete, wrote output to reverse_sync_output.sh, exiting...')
+print('run complete, wrote output to reverse_sync_output_{}.sh, exiting...'.format(MODE))
+logging.info('run complete, wrote output to reverse_sync_output_{}.sh, exiting...'.format(MODE))
 
 # sacctmgr modify account <account_name> set GrpTRESMins="cpu=xxxx"

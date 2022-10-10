@@ -52,13 +52,16 @@ parser.add_argument('-T', dest='MODE',
                     choices=[MODE_MYBRC, MODE_MYLRC])
 parser.add_argument('--PUSH', dest='push', action='store_true',
                     help='launch script in PROD mode, this will PUSH updates to the target API.')
+parser.add_argument('--PRICE_FILE', dest='price_file', type=str,
+                    default='/etc/slurm/bank-config.toml',
+                    help='which price file to use. default is /etc/slurm/bank-config.toml')
 
 parsed = parser.parse_args()
 DEBUG = not parsed.push
 MODE = parsed.MODE
 START = parsed.start
 
-PRICE_FILE = '/etc/slurm/bank-config.toml'
+PRICE_FILE = parsed.price_file
 CONFIG_FILE = 'full_sync_{}.conf'.format(MODE)
 LOG_FILE = ('full_sync_{}_debug.log' if DEBUG else 'full_sync_{}.log').format(MODE)
 BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
@@ -95,6 +98,10 @@ if DEBUG:
 print('starting run, using endpoint {}'.format(BASE_URL))
 logging.info('starting run, using endpoint {}'.format(BASE_URL))
 
+PRICE_FILE_CONTENTS = []
+with open(PRICE_FILE, 'r') as f:
+    PRICE_FILE_CONTENTS = f.readlines()
+
 if use_project_start:
     print('using project start dates')
     logging.info('using project start dates')
@@ -124,9 +131,11 @@ def to_timestring(timestamp):
 
 
 def get_price_per_hour(partition):
-    lines = []
-    with open(PRICE_FILE, 'r') as f:
-        lines = f.readlines()
+    lines = PRICE_FILE_CONTENTS[:]
+
+    # lines = []
+    # with open(PRICE_FILE, 'r') as f:
+    #     lines = f.readlines()
 
     target = 0
     partition_price_passed = False
@@ -152,6 +161,7 @@ def get_price_per_hour(partition):
 
     if target == 0:
         target = 1
+
     return target
 
 

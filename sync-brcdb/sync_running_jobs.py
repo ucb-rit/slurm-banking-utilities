@@ -76,6 +76,9 @@ parser.add_argument('-T', dest='MODE',
                     choices=[MODE_MYBRC, MODE_MYLRC])
 parser.add_argument('--PUSH', dest='push', action='store_true',
                     help='launch script in PROD mode, this will PUSH updates to the TARGET.')
+parser.add_argument('--PRICE_FILE', dest='price_file', type=str,
+                    default='/etc/slurm/bank-config.toml',
+                    help='which price file to use. default is /etc/slurm/bank-config.toml')
 
 parsed = parser.parse_args()
 START = parsed.start
@@ -83,7 +86,7 @@ END = parsed.end
 DEBUG = not parsed.push
 MODE = parsed.MODE
 
-PRICE_FILE = '/etc/slurm/bank-config.toml'
+PRICE_FILE = parsed.price_file
 CONFIG_FILE = 'sync_running_jobs_{}.conf'.format(MODE)
 LOG_FILE = ('sync_running_jobs_{}_debug.log' if DEBUG else 'sync_running_jobs_{}.log').format(MODE)
 BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
