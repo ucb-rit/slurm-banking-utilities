@@ -20,7 +20,7 @@ DEBUG = False
 
 # ======
 
-VERSION = 2.0
+VERSION = 2.1
 docstr = '''
 [version: {}]
 '''.format(VERSION)
