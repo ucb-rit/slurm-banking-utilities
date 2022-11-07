@@ -7,6 +7,7 @@ import json
 import time
 import socket
 import urllib
+import os
 
 import urllib2
 
@@ -45,6 +46,14 @@ JOB_ENDPOINT = BASE_URL + 'jobs/'
 if DEBUG:
     BASE_URL = 'http://scgup-dev.lbl.gov/api/' if MODE == MODE_MYBRC else 'http://scgup-dev.lbl.gov:8443/api/'
 
+CONFIG_FILE = 'check_usage_{}.conf'.format(MODE)
+
+if not os.path.exists(CONFIG_FILE):
+    print('config file {0} missing...'.format(CONFIG_FILE))
+    exit()
+
+with open(CONFIG_FILE, 'r') as f:
+    AUTH_TOKEN = f.read().strip()
 
 def red_str(vector):
     return "\033[91m{}\033[00m".format(vector)
@@ -113,6 +122,7 @@ def utc2local(utc):
 def paginate_requests(url, params):
     request_url = url + '?' + urllib.urlencode(params)
     request = urllib2.Request(request_url)
+    request.add_header('Authorization', AUTH_TOKEN)
 
     try:
         response = json.loads(urllib2.urlopen(request).read())
@@ -129,6 +139,7 @@ def paginate_requests(url, params):
         params['page'] = next_page
         request_url = url + '?' + urllib.urlencode(params)
         request = urllib2.Request(request_url)
+        request.add_header('Authorization', AUTH_TOKEN)
 
         try:
             response = json.loads(urllib2.urlopen(request).read())
@@ -148,6 +159,7 @@ def single_request(url, params=None):
     if params:
         request_url += '?' + urllib.urlencode(params)
     request = urllib2.Request(request_url)
+    request.add_header('Authorization', AUTH_TOKEN)
 
     try:
         response = json.loads(urllib2.urlopen(request).read())
@@ -254,6 +266,7 @@ def get_cpu_usage(user=None, account=None):
 
     request_url = JOB_ENDPOINT + '?' + urllib.urlencode(params)
     request = urllib2.Request(request_url)
+    request.add_header('Authorization', AUTH_TOKEN)
 
     try:
         response = json.loads(urllib2.urlopen(request).read())

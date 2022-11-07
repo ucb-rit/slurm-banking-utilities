@@ -194,6 +194,7 @@ def get_running_jobs():
 
     try:
         req = urllib2.Request(url_target)
+        req.add_header('Authorization', AUTH_TOKEN)
         response = json.loads(urllib2.urlopen(req).read())
     except urllib2.URLError as e:
         if DEBUG:
@@ -212,6 +213,7 @@ def get_running_jobs():
                               'start_time': start_ts, 'end_time': end_ts}
             url_target = BASE_URL + '/jobs?' + urllib.urlencode(request_params)
             req = urllib2.Request(url_target)
+            req.add_header('Authorization', AUTH_TOKEN)
             response = json.loads(urllib2.urlopen(req).read())
 
             job_table.extend(response['results'])

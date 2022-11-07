@@ -42,6 +42,15 @@ if DEBUG:
 FILE_NAME = 'jobcomp.log'
 timestamp_format = '%Y-%m-%dT%H:%M:%S'
 
+CONFIG_FILE = 'jobsync_{}.conf'.format(MODE)
+
+if not os.path.exists(CONFIG_FILE):
+    print('config file {0} missing...'.format(CONFIG_FILE))
+    exit()
+
+with open(CONFIG_FILE, 'r') as f:
+    AUTH_TOKEN = f.read().strip()
+
 
 def process_date_time(date_time):
     return time.mktime(time.strptime(date_time, timestamp_format)) if date_time else None
@@ -76,6 +85,7 @@ def get_job_url(start, end, user, account, page=1):
 
 def paginate_req_table(url_function, params=[None, None, None, None]):
     req = urllib2.Request(url_function(*params))
+    req.add_header('Authorization', AUTH_TOKEN)
     response = json.loads(urllib2.urlopen(req).read())
 
     yield response['results']
@@ -83,6 +93,7 @@ def paginate_req_table(url_function, params=[None, None, None, None]):
     while response['next'] is not None:
         try:
             req = urllib2.Request(url_function(*params, page=page))
+            req.add_header('Authorization', AUTH_TOKEN)
             response = json.loads(urllib2.urlopen(req).read())
 
             yield response['results']
@@ -103,6 +114,7 @@ def calculate_params():
     for blob in blobs:
         if 'StartTime=' in blob:
             last_start_time = blob.split('=')[-1]
+
     return [last_start_time, None, None, None]
 
 
@@ -155,14 +167,14 @@ with open(FILE_NAME, 'a') as f:
                                       submittime=submittime)) + '\n')
 
             if DEBUG:
-                print string.Formatter() \
-                    .vformat(line_template, (),
-                             SafeDict(jobid=jobid,
-                                      userid=userid,
-                                      jobstate=jobstate,
-                                      partition=partition,
-                                      starttime=starttime, endtime=endtime,
-                                      nodelist=nodelist,
-                                      nodecount=nodecnt, proccount=proccnt,
-                                      qos=qos,
-                                      submittime=submittime))
+                print(string.Formatter()
+                      .vformat(line_template, (),
+                               SafeDict(jobid=jobid,
+                                        userid=userid,
+                                        jobstate=jobstate,
+                                        partition=partition,
+                                        starttime=starttime, endtime=endtime,
+                                        nodelist=nodelist,
+                                        nodecount=nodecnt, proccount=proccnt,
+                                        qos=qos,
+                                        submittime=submittime)))

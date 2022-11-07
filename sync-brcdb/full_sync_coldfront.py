@@ -205,6 +205,7 @@ def paginate_requests(url, params=None):
 
     try:
         req = urllib2.Request(request_url)
+        req.add_header('Authorization', AUTH_TOKEN)
         response = json.loads(urllib2.urlopen(req).read())
     except urllib2.URLError as e:
         if DEBUG:
@@ -222,6 +223,7 @@ def paginate_requests(url, params=None):
             params['page'] = current_page
             request_url = url + '?' + urllib.urlencode(params)
             req = urllib2.Request(request_url)
+            req.add_header('Authorization', AUTH_TOKEN)
             response = json.loads(urllib2.urlopen(req).read())
 
             results.extend(response['results'])
@@ -252,6 +254,7 @@ def single_request(url, params=None):
 
     try:
         request = urllib2.Request(request_url)
+        request.add_header('Authorization', AUTH_TOKEN)
         response = json.loads(urllib2.urlopen(request).read())
     except Exception as e:
         response = {'results': None}
