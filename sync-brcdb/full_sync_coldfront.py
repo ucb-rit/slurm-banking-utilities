@@ -66,6 +66,24 @@ CONFIG_FILE = 'full_sync_{}.conf'.format(MODE)
 LOG_FILE = ('full_sync_{}_debug.log' if DEBUG else 'full_sync_{}.log').format(MODE)
 BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
 
+COMPUTE_RESOURCES_TABLE = {
+    MODE_MYBRC: {
+        'ac': 'Savio Compute',
+        'co': 'Savio Compute',
+        'fc': 'Savio Compute',
+        'ic': 'Savio Compute',
+        'pc': 'Savio Compute',
+        'vector': 'Vector Compute',
+        'abc': 'ABC Compute',
+    },
+
+    MODE_MYLRC: {
+        'ac': 'LAWRENCIUM Compute',
+        'lr': 'LAWRENCIUM Compute',
+        'pc': 'LAWRENCIUM Compute',
+    }
+}
+
 # default start date for given mode
 current_month = datetime.datetime.now().month
 current_year = datetime.datetime.now().year
@@ -268,8 +286,11 @@ def single_request(url, params=None):
 
 def get_project_start(project):
     allocations_url = BASE_URL + 'allocations/'
-    compute_resources = '{} Compute'.format('Savio' if MODE == MODE_MYBRC else 'LAWRENCIUM')
+
+    header = project.split('_')[0]
+    compute_resources = COMPUTE_RESOURCES_TABLE[MODE].get(header, '{} Compute'.format(header.upper()))
     response = single_request(allocations_url, {'project': project, 'resources': compute_resources})
+
     if not response or len(response) == 0:
         if DEBUG:
             print('[get_project_start({})] ERR'.format(project))

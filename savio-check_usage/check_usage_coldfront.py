@@ -43,6 +43,25 @@ ALLOCATION_ENDPOINT = BASE_URL + 'allocations/'
 ALLOCATION_USERS_ENDPOINT = BASE_URL + 'allocation_users/'
 JOB_ENDPOINT = BASE_URL + 'jobs/'
 
+COMPUTE_RESOURCES_TABLE = {
+    MODE_MYBRC: {
+        'ac': 'Savio Compute',
+        'co': 'Savio Compute',
+        'fc': 'Savio Compute',
+        'ic': 'Savio Compute',
+        'pc': 'Savio Compute',
+        'vector': 'Vector Compute',
+        'abc': 'ABC Compute',
+    },
+
+    MODE_MYLRC: {
+        'ac': 'LAWRENCIUM Compute',
+        'lr': 'LAWRENCIUM Compute',
+        'pc': 'LAWRENCIUM Compute',
+    }
+}
+
+
 if DEBUG:
     BASE_URL = 'http://scgup-dev.lbl.gov/api/' if MODE == MODE_MYBRC else 'http://scgup-dev.lbl.gov:8443/api/'
 
@@ -174,7 +193,9 @@ def single_request(url, params=None):
 
 def get_project_start(project):
     allocation_id_url = ALLOCATION_ENDPOINT
-    compute_resources = '{} Compute'.format('Savio' if MODE == MODE_MYBRC else 'LAWRENCIUM')
+
+    header = project.split('_')[0]
+    compute_resources = COMPUTE_RESOURCES_TABLE[MODE].get(header, '{} Compute'.format(header.upper()))
     params = {'project': project, 'resources': compute_resources}
 
     response = single_request(allocation_id_url, params)
@@ -289,7 +310,9 @@ def get_cpu_usage(user=None, account=None):
 
 def process_account_query():
     allocation_id_url = ALLOCATION_ENDPOINT
-    compute_resources = '{} Compute'.format('Savio' if MODE == MODE_MYBRC else 'LAWRENCIUM')
+
+    header = account.split('_')[0]
+    compute_resources = COMPUTE_RESOURCES_TABLE[MODE].get(header, '{} Compute'.format(header.upper()))
     response = single_request(allocation_id_url, {'project': account, 'resources': compute_resources})
     if not response or len(response) == 0:
         if DEBUG:

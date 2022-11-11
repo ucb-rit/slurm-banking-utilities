@@ -32,6 +32,24 @@ CONFIG_FILE = 'reverse_sync_{}.conf'.format(MODE)
 LOG_FILE = ('reverse_sync_{}_debug.log' if DEBUG else 'reverse_sync_{}.log').format(MODE)
 BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
 
+COMPUTE_RESOURCES_TABLE = {
+    MODE_MYBRC: {
+        'ac': 'Savio Compute',
+        'co': 'Savio Compute',
+        'fc': 'Savio Compute',
+        'ic': 'Savio Compute',
+        'pc': 'Savio Compute',
+        'vector': 'Vector Compute',
+        'abc': 'ABC Compute',
+    },
+
+    MODE_MYLRC: {
+        'ac': 'LAWRENCIUM Compute',
+        'lr': 'LAWRENCIUM Compute',
+        'pc': 'LAWRENCIUM Compute',
+    }
+}
+
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     format='%(asctime)s %(levelname)-8s %(message)s',
                     datefmt='%Y-%m-%dT%H:%M:%S')
@@ -124,7 +142,9 @@ def single_request(url, params=None):
 
 def get_project_allocation(project_name):
     allocation_id_url = BASE_URL + 'allocations/'
-    compute_resources = '{} Compute'.format('Savio' if MODE == MODE_MYBRC else 'LAWRENCIUM')
+
+    header = project.split('_')[0]
+    compute_resources = COMPUTE_RESOURCES_TABLE[MODE].get(header, '{} Compute'.format(header.upper()))
     response = single_request(allocation_id_url, {'project': project_name, 'resources': compute_resources})
     if not response or len(response) == 0:
         if DEBUG:
@@ -147,7 +167,9 @@ def get_project_allocation(project_name):
 
 def get_project_start(project_name):
     allocations_url = BASE_URL + 'allocations/'
-    compute_resources = '{} Compute'.format('Savio' if MODE == MODE_MYBRC else 'LAWRENCIUM')
+
+    header = project.split('_')[0]
+    compute_resources = COMPUTE_RESOURCES_TABLE[MODE].get(header, '{} Compute'.format(header.upper()))
     response = single_request(allocations_url, {'project': project_name, 'resources': compute_resources})
     if not response or len(response) == 0:
         if DEBUG:
