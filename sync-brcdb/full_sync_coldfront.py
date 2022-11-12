@@ -403,7 +403,7 @@ for jobid, job in table.items():
     url_target = BASE_URL + 'jobs/' + str(jobid) + '/'
     req = urllib2.Request(url=url_target, data=request_data)
 
-    req.add_header('Authorization', 'Token ' + AUTH_TOKEN)
+    req.add_header('Authorization', AUTH_TOKEN)
     req.get_method = lambda: 'PUT'
 
     try:
