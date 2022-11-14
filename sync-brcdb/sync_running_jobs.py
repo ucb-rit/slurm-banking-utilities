@@ -11,6 +11,8 @@ import argparse
 import datetime
 import logging
 
+from six.moves import configparser
+
 
 docstr = '''
 Sync running jobs between MyBRC/MyLRC DB with Slurm-DB.
@@ -121,44 +123,33 @@ print('starting run, using endpoint {} START: {}'.format(BASE_URL, START))
 logging.info('starting run, using endpoint {} START: {}'.format(BASE_URL, START))
 
 
-def get_price_per_hour(partition):
-    lines = []
-    with open(PRICE_FILE, 'r') as f:
-        lines = f.readlines()
-
-    target = 0
-    partition_price_passed = False
-    for line in lines:
-        line = line.decode('utf-8')
-        if not partition_price_passed and '[PartitionPrice]' in line:
-            partition_price_passed = True
-            continue
-
-        if not partition_price_passed:
-            continue
-
-        if line[0] == '#':
-            continue
-
-        if partition in line:
-            target = line.split()[-1]
-            target = float(target)
-            break
-
-        if '[' in line:
-            break
-
-    if target == 0:
-        target = 1
-    return target
+def get_prices_by_partition(price_file_path):
+    """Return a dict that maps partition name to a float representing
+    the price of a single CPU-hour on that partition, given the path to
+    the pricing file."""
+    config = configparser.ConfigParser()
+    parsed_file_paths = config.read(price_file_path)
+    assert price_file_path in parsed_file_paths
+    prices_by_partition = {}
+    for name, price in config.items('PartitionPrice'):
+        prices_by_partition[name.strip()] = float(price.strip())
+    return prices_by_partition
 
 
 def calculate_hours(duration_seconds):
     return duration_seconds / 3600
 
 
-def calculate_amount(partition, cpu_count, duration_hrs):
-    return round(get_price_per_hour(partition) * int(cpu_count) * duration_hrs, 2)
+def calculate_amount(partition, cpu_count, duration_hrs, prices_by_partition):
+    if partition in prices_by_partition:
+        price_per_hour = prices_by_partition[partition]
+    else:
+        # If the partition is not found, use a multiplier of 0.
+        message = 'Unexpected partition: {}'.format(partition)
+        print(message)
+        logging.info(message)
+        price_per_hour = float(0)
+    return round(price_per_hour * int(cpu_count) * duration_hrs, 2)
 
 
 def calculate_cpu_time(num_cpus, duration_hrs):
@@ -235,6 +226,11 @@ def get_running_jobs():
     return job_table
 
 
+print('Reading partition prices from {}'.format(PRICE_FILE))
+logging.info('Reading partition prices from {}'.format(PRICE_FILE))
+PRICES_BY_PARTITION = get_prices_by_partition(PRICE_FILE)
+
+
 print('gathering running jobs from {}db'.format(MODE))
 logging.info('gathering running jobs from {}db'.format(MODE))
 
@@ -292,7 +288,8 @@ for current in job_stats:
         raw_time_hrs = calculate_hours((_end - _start).total_seconds())
 
         cpu_time = calculate_cpu_time(alloc_cpus, raw_time_hrs)
-        amount = calculate_amount(partition, alloc_cpus, raw_time_hrs)
+        amount = calculate_amount(
+            partition, alloc_cpus, raw_time_hrs, PRICES_BY_PARTITION)
         node_list_converted = node_list_format(nodelist)
 
         table[jobid] = {
