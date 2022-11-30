@@ -65,7 +65,9 @@ COMPUTE_RESOURCES_TABLE = {
 if DEBUG:
     BASE_URL = 'http://scgup-dev.lbl.gov/api/' if MODE == MODE_MYBRC else 'http://scgup-dev.lbl.gov:8443/api/'
 
-CONFIG_FILE = 'check_usage_{}.conf'.format(MODE)
+# CONFIG_FILE = 'check_usage_{}.conf'.format(MODE)
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                           'check_usage_{}.conf'.format(MODE))
 
 if not os.path.exists(CONFIG_FILE):
     print('config file {0} missing...'.format(CONFIG_FILE))
