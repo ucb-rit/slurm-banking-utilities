@@ -6,10 +6,11 @@ import getpass
 import json
 import time
 import socket
-import urllib
 import os
 
-import urllib2
+import urllib.error
+import urllib.parse
+import urllib.request
 
 
 # TOGGLES:
@@ -39,6 +40,7 @@ timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
 timestamp_format_minimal = '%Y-%m-%d'
 
 BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
+# BASE_URL = 'http://localhost:8880/api/'
 ALLOCATION_ENDPOINT = BASE_URL + 'allocations/'
 ALLOCATION_USERS_ENDPOINT = BASE_URL + 'allocation_users/'
 JOB_ENDPOINT = BASE_URL + 'jobs/'
@@ -124,13 +126,13 @@ def to_timestamp(date_time, to_utc=False):
 
 # utc time stamp -> utc date time string
 def to_timestring(timestamp):
-    date_time = datetime.datetime.utcfromtimestamp(timestamp)
+    date_time = datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc)
     return date_time.strftime(timestamp_format_complete) + 'Z'
 
 
 # utc time stamp -> local time stamp
 def utc2local(utc):
-    utc = datetime.datetime.utcfromtimestamp(utc)
+    utc = datetime.datetime.fromtimestamp(utc, tz=datetime.timezone.utc)
     local = utc + datetime.timedelta(hours=-7)
     local = time.mktime(local.timetuple())
 
@@ -141,12 +143,12 @@ def utc2local(utc):
 
 
 def paginate_requests(url, params):
-    request_url = url + '?' + urllib.urlencode(params)
-    request = urllib2.Request(request_url)
+    request_url = url + '?' + urllib.parse.urlencode(params)
+    request = urllib.request.Request(request_url)
     request.add_header('Authorization', AUTH_TOKEN)
 
     try:
-        response = json.loads(urllib2.urlopen(request).read())
+        response = json.loads(urllib.request.urlopen(request).read())
     except Exception as e:
         response = {'results': None}
         if DEBUG:
@@ -158,15 +160,15 @@ def paginate_requests(url, params):
     results = response['results']
     while response['next'] is not None:
         params['page'] = next_page
-        request_url = url + '?' + urllib.urlencode(params)
-        request = urllib2.Request(request_url)
+        request_url = url + '?' + urllib.parse.urlencode(params)
+        request = urllib.request.Request(request_url)
         request.add_header('Authorization', AUTH_TOKEN)
 
         try:
-            response = json.loads(urllib2.urlopen(request).read())
+            response = json.loads(urllib.request.urlopen(request).read())
             results.extend(response['results'])
             next_page += 1
-        except urllib2.URLError as e:
+        except urllib.error.URLError as e:
             response['next'] = None
 
             if DEBUG:
@@ -178,12 +180,12 @@ def paginate_requests(url, params):
 def single_request(url, params=None):
     request_url = url
     if params:
-        request_url += '?' + urllib.urlencode(params)
-    request = urllib2.Request(request_url)
+        request_url += '?' + urllib.parse.urlencode(params)
+    request = urllib.request.Request(request_url)
     request.add_header('Authorization', AUTH_TOKEN)
 
     try:
-        response = json.loads(urllib2.urlopen(request).read())
+        response = json.loads(urllib.request.urlopen(request).read())
     except Exception as e:
         response = {'results': None}
 
@@ -287,12 +289,12 @@ def get_cpu_usage(user=None, account=None):
     if account:
         params['account'] = account
 
-    request_url = JOB_ENDPOINT + '?' + urllib.urlencode(params)
-    request = urllib2.Request(request_url)
+    request_url = JOB_ENDPOINT + '?' + urllib.parse.urlencode(params)
+    request = urllib.request.Request(request_url)
     request.add_header('Authorization', AUTH_TOKEN)
 
     try:
-        response = json.loads(urllib2.urlopen(request).read())
+        response = json.loads(urllib.request.urlopen(request).read())
     except Exception as e:
         response = {'count': 0, 'total_cpu_time': 0, 'total_amount': 0,
                     'response': [], 'next': None}
@@ -330,7 +332,7 @@ def process_account_query():
         if DEBUG:
             print('[process_account_query()] ERR')
 
-        raise urllib2.URLError('ERR: Backend Error, contact {} Support ({}).'
+        raise urllib.error.URLError('ERR: Backend Error, contact {} Support ({}).'
                                .format(SUPPORT_TEAM, SUPPORT_EMAIL))
 
     allocation = response[0]['value']
@@ -341,7 +343,7 @@ def process_account_query():
         try:
             account_usage = response[0]['usage']['value']
         except KeyError:
-            raise urllib2.URLError('ERR: Backend Error, contact {} Support ({}).'
+            raise urllib.error.URLError('ERR: Backend Error, contact {} Support ({}).'
                                    .format(SUPPORT_TEAM, SUPPORT_EMAIL))
 
         job_count, cpu_usage, _ = get_cpu_usage(account=account)
@@ -424,7 +426,7 @@ for req_type in output_headers.keys():
 
             process_account_query()
 
-    except urllib2.URLError as e:
+    except urllib.error.URLError as e:
         print('ERR: Could not connect to backend, contact {} Support ({}) if problem persists.'
               .format(SUPPORT_TEAM, SUPPORT_EMAIL))
         if DEBUG:
