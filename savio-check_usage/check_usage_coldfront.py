@@ -141,11 +141,14 @@ def utc2local(utc):
 
     return local
 
-
-def paginate_requests(url, params):
-    request_url = url + '?' + urllib.parse.urlencode(params)
+def get_request(url_modifier, params):
+    request_url = url_modifier + '?' + urllib.parse.urlencode(params)
     request = urllib.request.Request(request_url)
     request.add_header('Authorization', AUTH_TOKEN)
+    return request
+
+def paginate_requests(url, params):
+    request = get_request(url, params)
 
     try:
         response = json.loads(urllib.request.urlopen(request).read())
@@ -160,9 +163,7 @@ def paginate_requests(url, params):
     results = response['results']
     while response['next'] is not None:
         params['page'] = next_page
-        request_url = url + '?' + urllib.parse.urlencode(params)
-        request = urllib.request.Request(request_url)
-        request.add_header('Authorization', AUTH_TOKEN)
+        request = get_request(url, params)
 
         try:
             response = json.loads(urllib.request.urlopen(request).read())
@@ -221,32 +222,30 @@ def get_project_start(project):
         exit(0)
 
 
-current_month = datetime.datetime.now().month
-current_year = datetime.datetime.now().year
 break_month = '06' if MODE == MODE_MYBRC else '10'
-year = current_year if current_month >= int(break_month) else (current_year - 1)
+year = datetime.datetime.now().year if datetime.datetime.now().month >= int(break_month) \
+    else (datetime.datetime.now().year - 1)
 default_start = '{}-{}-01T00:00:00'.format(year, break_month)
 
-parser = argparse.ArgumentParser(description=docstr)
-parser.add_argument('-u', dest='user',
-                    help='check usage of this user')
-parser.add_argument('-a', dest='account',
-                    help='check usage of this account')
+def handle_parsing():
+    parser = argparse.ArgumentParser(description=docstr)
+    parser.add_argument('-u', dest='user',
+                        help='check usage of this user')
+    parser.add_argument('-a', dest='account',
+                        help='check usage of this account')
 
-parser.add_argument('-E', dest='expand', action='store_true',
-                    help='expand user/account usage')
-parser.add_argument('-s', dest='start', type=check_valid_date,
-                    help='starttime for the query period (YYYY-MM-DD[THH:MM:SS])',
-                    default=default_start)
-parser.add_argument('-e', dest='end', type=check_valid_date,
-                    help='endtime for the query period (YYYY-MM-DD[THH:MM:SS])',
-                    default=datetime.datetime.now().strftime(timestamp_format_complete))
-parsed = parser.parse_args()
-user = parsed.user
-account = parsed.account
-expand = parsed.expand
-_start = parsed.start
-_end = parsed.end
+    parser.add_argument('-E', dest='expand', action='store_true',
+                        help='expand user/account usage')
+    parser.add_argument('-s', dest='start', type=check_valid_date,
+                        help='starttime for the query period (YYYY-MM-DD[THH:MM:SS])',
+                        default=default_start)
+    parser.add_argument('-e', dest='end', type=check_valid_date,
+                        help='endtime for the query period (YYYY-MM-DD[THH:MM:SS])',
+                        default=datetime.datetime.now().strftime(timestamp_format_complete))
+    parsed = parser.parse_args()
+    return parsed.user, parsed.account, parsed.expand, parsed.start, parsed.end
+
+user, account, expand, _start, _end = handle_parsing()
 
 default_start_used = _start == default_start
 calculate_project_start = default_start_used and account
@@ -289,9 +288,7 @@ def get_cpu_usage(user=None, account=None):
     if account:
         params['account'] = account
 
-    request_url = JOB_ENDPOINT + '?' + urllib.parse.urlencode(params)
-    request = urllib.request.Request(request_url)
-    request.add_header('Authorization', AUTH_TOKEN)
+    request = get_request(JOB_ENDPOINT, params)
 
     try:
         response = json.loads(urllib.request.urlopen(request).read())
