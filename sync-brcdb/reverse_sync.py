@@ -1,8 +1,9 @@
 #!/usr/bin/python
 import logging
 import os
-import urllib
-import urllib2
+import urllib.parse
+import urllib.request
+import urllib.error
 import json
 import argparse
 import subprocess
@@ -30,7 +31,8 @@ DEBUG = False
 
 CONFIG_FILE = 'reverse_sync_{}.conf'.format(MODE)
 LOG_FILE = ('reverse_sync_{}_debug.log' if DEBUG else 'reverse_sync_{}.log').format(MODE)
-BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
+# BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
+BASE_URL = 'http://localhost:8880/api/'
 
 COMPUTE_RESOURCES_TABLE = {
     MODE_MYBRC: {
@@ -74,14 +76,14 @@ def paginate_requests(url, params=None):
     params = params or {}
 
     if params:
-        request_url = url + '?' + urllib.urlencode(params)
+        request_url = url + '?' + urllib.parse.urlencode(params)
 
     try:
-        req = urllib2.Request(request_url)
+        req = urllib.request.Request(request_url)
         req.add_header('Authorization', AUTH_TOKEN)
-        response = json.loads(urllib2.urlopen(req).read())
+        response = json.loads(urllib.request.urlopen(req).read())
 
-    except urllib2.URLError as e:
+    except urllib.error.URLError as e:
         if DEBUG:
             print('[paginate_requests({0}, {1})] failed: {2}'.format(url, params, e))
             logging.error('[paginate_requests({0}, {1})] failed: {2}'.format(url, params, e))
@@ -95,10 +97,10 @@ def paginate_requests(url, params=None):
         try:
             current_page += 1
             params['page'] = current_page
-            request_url = url + '?' + urllib.urlencode(params)
-            req = urllib2.Request(request_url)
+            request_url = url + '?' + urllib.parse.urlencode(params)
+            req = urllib.request.Request(request_url)
             req.add_header('Authorization', AUTH_TOKEN)
-            response = json.loads(urllib2.urlopen(req).read())
+            response = json.loads(urllib.request.urlopen(req).read())
 
             results.extend(response['results'])
             if current_page % 5 == 0:
@@ -109,7 +111,7 @@ def paginate_requests(url, params=None):
                 logging.warning('too many pages to sync at once, rerun script after this run completes...')
                 break
 
-        except urllib2.URLError as e:
+        except urllib.error.URLError as e:
             response['next'] = None
 
             if DEBUG:
@@ -124,12 +126,12 @@ def single_request(url, params=None):
     params = params or {}
 
     if params:
-        request_url = url + '?' + urllib.urlencode(params)
+        request_url = url + '?' + urllib.parse.urlencode(params)
 
     try:
-        request = urllib2.Request(request_url)
+        request = urllib.request.Request(request_url)
         request.add_header('Authorization', AUTH_TOKEN)
-        response = json.loads(urllib2.urlopen(request).read())
+        response = json.loads(urllib.request.urlopen(request).read())
     except Exception as e:
         response = {'results': None}
 
@@ -143,7 +145,7 @@ def single_request(url, params=None):
 def get_project_allocation(project_name):
     allocation_id_url = BASE_URL + 'allocations/'
 
-    header = project.split('_')[0]
+    header = project_name.split('_')[0]
     compute_resources = COMPUTE_RESOURCES_TABLE[MODE].get(header, '{} Compute'.format(header.upper()))
     response = single_request(allocation_id_url, {'project': project_name, 'resources': compute_resources})
     if not response or len(response) == 0:
@@ -168,7 +170,7 @@ def get_project_allocation(project_name):
 def get_project_start(project_name):
     allocations_url = BASE_URL + 'allocations/'
 
-    header = project.split('_')[0]
+    header = project_name.split('_')[0]
     compute_resources = COMPUTE_RESOURCES_TABLE[MODE].get(header, '{} Compute'.format(header.upper()))
     response = single_request(allocations_url, {'project': project_name, 'resources': compute_resources})
     if not response or len(response) == 0:
