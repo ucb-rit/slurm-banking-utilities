@@ -39,8 +39,8 @@ SUPPORT_EMAIL = 'brc-hpc-help@berkeley.edu' if MODE == MODE_MYBRC else 'hpcshelp
 timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
 timestamp_format_minimal = '%Y-%m-%d'
 
-# BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
-BASE_URL = 'http://localhost:8880/api/'
+BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
+# BASE_URL = 'http://localhost:8880/api/'
 ALLOCATION_ENDPOINT = BASE_URL + 'allocations/'
 ALLOCATION_USERS_ENDPOINT = BASE_URL + 'allocation_users/'
 JOB_ENDPOINT = BASE_URL + 'jobs/'
