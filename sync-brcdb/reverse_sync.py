@@ -34,6 +34,9 @@ LOG_FILE = ('reverse_sync_{}_debug.log' if DEBUG else 'reverse_sync_{}.log').for
 BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
 # BASE_URL = 'http://localhost:8880/api/'
 
+ALLOCATION_ENDPOINT = BASE_URL + 'allocations/'
+PROJECT_ENDPOINT = BASE_URL + 'projects/'
+
 COMPUTE_RESOURCES_TABLE = {
     MODE_MYBRC: {
         'ac': 'Savio Compute',
@@ -70,7 +73,7 @@ if DEBUG:
 print('starting run, using endpoint {0} ...'.format(BASE_URL))
 logging.info('starting run, using endpoint {0} ...'.format(BASE_URL))
 
-
+# Makes paginated requests to a given URL with optional parameters.
 def paginate_requests(url, params=None):
     request_url = url
     params = params or {}
@@ -120,13 +123,14 @@ def paginate_requests(url, params=None):
 
     return results
 
-
+# Makes a single HTTP request to the given URL with optional query 
+# parameters and returns the results.
 def single_request(url, params=None):
     request_url = url
     params = params or {}
 
     if params:
-        request_url = url + '?' + urllib.parse.urlencode(params)
+        request_url += '?' + urllib.parse.urlencode(params)
 
     try:
         request = urllib.request.Request(request_url)
@@ -141,13 +145,11 @@ def single_request(url, params=None):
 
     return response['results']
 
-
+# Retrieves allocation information for a given project name.
 def get_project_allocation(project_name):
-    allocation_id_url = BASE_URL + 'allocations/'
-
     header = project_name.split('_')[0]
     compute_resources = COMPUTE_RESOURCES_TABLE[MODE].get(header, '{} Compute'.format(header.upper()))
-    response = single_request(allocation_id_url, {'project': project_name, 'resources': compute_resources})
+    response = single_request(ALLOCATION_ENDPOINT, {'project': project_name, 'resources': compute_resources})
     if not response or len(response) == 0:
         if DEBUG:
             print('[get_project_allocation({0})] ERR'.format(project_name))
@@ -156,7 +158,7 @@ def get_project_allocation(project_name):
         return None
 
     allocation_id = response[0]['id']
-    allocation_url = allocation_id_url + '{0}/attributes/'.format(allocation_id)
+    allocation_url = ALLOCATION_ENDPOINT + '{0}/attributes/'.format(allocation_id)
     response = single_request(allocation_url, {'type': 'Service Units'})
     if not response:
         return None
@@ -166,13 +168,13 @@ def get_project_allocation(project_name):
 
     return allocation
 
-
+# Retrieves the start date of a project.
 def get_project_start(project_name):
-    allocations_url = BASE_URL + 'allocations/'
-
     header = project_name.split('_')[0]
     compute_resources = COMPUTE_RESOURCES_TABLE[MODE].get(header, '{} Compute'.format(header.upper()))
-    response = single_request(allocations_url, {'project': project_name, 'resources': compute_resources})
+    params = {'project': project_name, 'resources': compute_resources}
+
+    response = single_request(ALLOCATION_ENDPOINT, params)
     if not response or len(response) == 0:
         if DEBUG:
             print('[get_project_start({0})] ERR'.format(project_name))
@@ -187,12 +189,12 @@ def get_project_start(project_name):
     return creation if '.' not in creation else creation.split('.')[0]
     # return '{0}T00:00:00'.format(creation)
 
-def reverse_sync():
+def main():
     print('gathering accounts from {}db...'.format(MODE))
     logging.info('gathering data from {}db...'.format(MODE))
 
     # NOTE(vir): ignore abc and vector for now
-    project_table = paginate_requests(BASE_URL + 'projects/')
+    project_table = paginate_requests(PROJECT_ENDPOINT)
     project_table = filter(
         lambda p: p['name'] != 'abc' and not p['name'].startswith('vector_'),
         project_table)
@@ -243,4 +245,5 @@ def reverse_sync():
 
     # sacctmgr modify account <account_name> set GrpTRESMins="cpu=xxxx"
 
-reverse_sync()
+if __name__ == '__main__':
+    main()

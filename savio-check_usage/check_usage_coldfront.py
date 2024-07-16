@@ -36,8 +36,8 @@ SUPPORT_TEAM = 'BRC' if MODE == MODE_MYBRC else 'LRC'
 SUPPORT_EMAIL = 'brc-hpc-help@berkeley.edu' if MODE == MODE_MYBRC else 'hpcshelp@lbl.gov'
 
 # constants
-timestamp_format_complete = '%Y-%m-%dT%H:%M:%S'
-timestamp_format_minimal = '%Y-%m-%d'
+TIMESTAMP_FORMAT_COMPLETE = '%Y-%m-%dT%H:%M:%S'
+TIMESTAMP_FORMAT_MINIMAL = '%Y-%m-%d'
 
 BASE_URL = 'https://{}/api/'.format('mybrc.brc.berkeley.edu' if MODE == MODE_MYBRC else 'mylrc.lbl.gov')
 # BASE_URL = 'http://localhost:8880/api/'
@@ -95,12 +95,12 @@ def check_valid_date(s):
     complete, minimal = None, None
 
     try:
-        complete = datetime.datetime.strptime(s, timestamp_format_complete)
+        complete = datetime.datetime.strptime(s, TIMESTAMP_FORMAT_COMPLETE)
     except Exception:
         pass
 
     try:
-        minimal = datetime.datetime.strptime(s, timestamp_format_minimal)
+        minimal = datetime.datetime.strptime(s, TIMESTAMP_FORMAT_MINIMAL)
     except Exception:
         pass
 
@@ -113,9 +113,9 @@ def check_valid_date(s):
 # date time string -> time stamp
 def to_timestamp(date_time, to_utc=False):
     try:
-        dt_obj = datetime.datetime.strptime(date_time, timestamp_format_complete)
+        dt_obj = datetime.datetime.strptime(date_time, TIMESTAMP_FORMAT_COMPLETE)
     except ValueError:
-        dt_obj = datetime.datetime.strptime(date_time, timestamp_format_minimal)
+        dt_obj = datetime.datetime.strptime(date_time, TIMESTAMP_FORMAT_MINIMAL)
 
     if to_utc:
         return time.mktime(dt_obj.timetuple())
@@ -127,7 +127,7 @@ def to_timestamp(date_time, to_utc=False):
 # utc time stamp -> utc date time string
 def to_timestring(timestamp):
     date_time = datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc)
-    return date_time.strftime(timestamp_format_complete) + 'Z'
+    return date_time.strftime(TIMESTAMP_FORMAT_COMPLETE) + 'Z'
 
 
 # utc time stamp -> local time stamp
@@ -185,10 +185,10 @@ def single_request(url, params=None):
     request_url = url
     if params:
         request_url += '?' + urllib.parse.urlencode(params)
-    request = urllib.request.Request(request_url)
-    request.add_header('Authorization', AUTH_TOKEN)
 
     try:
+        request = urllib.request.Request(request_url)
+        request.add_header('Authorization', AUTH_TOKEN)
         response = json.loads(urllib.request.urlopen(request).read())
     except Exception as e:
         response = {'results': None}
@@ -201,13 +201,11 @@ def single_request(url, params=None):
 # Retrieves the start date of a project for a given user 
 # by making a request to the allocation ID endpoint.
 def get_project_start(project, user):
-    allocation_id_url = ALLOCATION_ENDPOINT
-
     header = project.split('_')[0]
     compute_resources = COMPUTE_RESOURCES_TABLE[MODE].get(header, '{} Compute'.format(header.upper()))
     params = {'project': project, 'resources': compute_resources}
 
-    response = single_request(allocation_id_url, params)
+    response = single_request(ALLOCATION_ENDPOINT, params)
     if not response or len(response) == 0:
         if DEBUG:
             print('[get_project_start({}, {})] ERR'.format(project, user))
@@ -239,7 +237,7 @@ def handle_parsing(default_start):
                         default=default_start)
     parser.add_argument('-e', dest='end', type=check_valid_date,
                         help='endtime for the query period (YYYY-MM-DD[THH:MM:SS])',
-                        default=datetime.datetime.now().strftime(timestamp_format_complete))
+                        default=datetime.datetime.now().strftime(TIMESTAMP_FORMAT_COMPLETE))
     parsed = parser.parse_args()
     return parsed.user, parsed.account, parsed.expand, parsed.start, parsed.end
 
@@ -283,8 +281,7 @@ def process_user_query(args, output_headers):
     print('{} {} jobs, {:.2f} CPUHrs, {} SUs used.'.format(output_headers['user'], total_jobs, total_cpu, total_usage))
 
     if args["expand"]:
-        user_allocation_url = ALLOCATION_USERS_ENDPOINT
-        response = paginate_requests(user_allocation_url, {'user': args["user"]})
+        response = paginate_requests(ALLOCATION_USERS_ENDPOINT, {'user': args["user"]})
 
         for allocation in response:
             allocation_account = allocation['project']
@@ -296,12 +293,11 @@ def process_user_query(args, output_headers):
 
 # Processes an account query to retrieve and display CPU usage statistics.
 def process_account_query(args, output_headers):
-    allocation_id_url = ALLOCATION_ENDPOINT
     account = args["account"]
 
     header = account.split('_')[0]
     compute_resources = COMPUTE_RESOURCES_TABLE[MODE].get(header, '{} Compute'.format(header.upper()))
-    response = single_request(allocation_id_url, {'project': account, 'resources': compute_resources})
+    response = single_request(ALLOCATION_ENDPOINT, {'project': account, 'resources': compute_resources})
     if not response or len(response) == 0:
         if DEBUG:
             print('[process_account_query()] ERR')
@@ -310,7 +306,7 @@ def process_account_query(args, output_headers):
         return
 
     allocation_id = response[0]['id']
-    allocation_url = allocation_id_url + '{}/attributes/'.format(allocation_id)
+    allocation_url = ALLOCATION_ENDPOINT + '{}/attributes/'.format(allocation_id)
     response = single_request(allocation_url, {'type': 'Service Units'})
     if not response or len(response) == 0:
         if DEBUG:
@@ -343,8 +339,7 @@ def process_account_query(args, output_headers):
               .format(output_headers['account'], job_count, cpu_usage, account_usage, allocation))
 
     if args["expand"]:
-        user_url = ALLOCATION_USERS_ENDPOINT
-        user_list = paginate_requests(user_url, {'project': account})
+        user_list = paginate_requests(ALLOCATION_USERS_ENDPOINT, {'project': account})
 
         for user in user_list:
             if user['user'] is None:
@@ -406,8 +401,7 @@ def handle_requests(output_headers, args):
                 exit(0)
 
             if to_timestamp('2020-06-01', to_utc=True) > start:
-                print('INFO: Information might be inaccurate, \
-                      for accurate information contact {} support ({}).'
+                print('INFO: Information might be inaccurate, for accurate information contact {} support ({}).'
                     .format(SUPPORT_TEAM, SUPPORT_EMAIL))
 
             if req_type == 'user':
@@ -420,8 +414,7 @@ def handle_requests(output_headers, args):
                 process_account_query(args, output_headers)
 
         except urllib.error.URLError as e:
-            print('ERR: Could not connect to backend, \
-                  contact {} Support ({}) if problem persists.'
+            print('ERR: Could not connect to backend, contact {} Support ({}) if problem persists.'
                 .format(SUPPORT_TEAM, SUPPORT_EMAIL))
             if DEBUG:
                 print('__main__ ERR: {}'.format(e))
@@ -430,7 +423,7 @@ def handle_requests(output_headers, args):
             if DEBUG:
                 print('__main__ ERR: {}'.format(e))
 
-def check_usage():
+def main():
     default_start = get_default_start()
     user, account, expand, start, end = handle_parsing(default_start)
 
@@ -466,4 +459,5 @@ def check_usage():
     output_headers = get_output_headers(user, account, start, end)
     handle_requests(output_headers, args)
 
-check_usage()
+if __name__ == '__main__':
+    main()
