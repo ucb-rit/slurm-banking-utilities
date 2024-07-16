@@ -141,12 +141,14 @@ def utc2local(utc):
 
     return local
 
+# Constructs and returns a URL request with the given URL modifier and parameters.
 def get_request(url_modifier, params):
     request_url = url_modifier + '?' + urllib.parse.urlencode(params)
     request = urllib.request.Request(request_url)
     request.add_header('Authorization', AUTH_TOKEN)
     return request
 
+# Makes paginated requests to the given URL and returns a list of results.
 def paginate_requests(url, params):
     request = get_request(url, params)
 
@@ -177,6 +179,8 @@ def paginate_requests(url, params):
 
     return results
 
+# Makes a single HTTP request to the given URL with optional query 
+# parameters and returns the results.
 def single_request(url, params=None):
     request_url = url
     if params:
@@ -194,7 +198,8 @@ def single_request(url, params=None):
 
     return response['results']
 
-
+# Retrieves the start date of a project for a given user 
+# by making a request to the allocation ID endpoint.
 def get_project_start(project, user):
     allocation_id_url = ALLOCATION_ENDPOINT
 
@@ -238,7 +243,8 @@ def handle_parsing(default_start):
     parsed = parser.parse_args()
     return parsed.user, parsed.account, parsed.expand, parsed.start, parsed.end
 
-
+# Retrieves CPU usage statistics within a specified time range. 
+# Optionally filtered by user and/or account.
 def get_cpu_usage(args, user=None, account=None):
     params = {'start_time': args["start"], 'end_time': args["end"]}
     if user:
@@ -267,6 +273,7 @@ def get_cpu_usage(args, user=None, account=None):
 
     return job_count, total_cpu, total_amount
 
+# Processes a user query to retrieve and display CPU usage statistics.
 def process_user_query(args, output_headers):
     total_jobs, total_cpu, total_usage = get_cpu_usage(args, user=args["user"])
     if total_jobs == total_cpu == total_usage == -1:
@@ -284,13 +291,13 @@ def process_user_query(args, output_headers):
             allocation_jobs, allocation_cpu, allocation_usage = get_cpu_usage(args, user=args["user"], account=allocation_account)
 
             print('\tUsage for USER {} in ACCOUNT {} [{}, {}]: {} jobs, {:.2f} CPUHrs, {} SUs.'
-                  .format(args["user"], allocation_account, args["_start"], args["_end"], allocation_jobs, allocation_cpu, allocation_usage))
+                  .format(args["user"], allocation_account, to_timestring(args["start"]), 
+                          to_timestring(args["end"]), allocation_jobs, allocation_cpu, allocation_usage))
 
+# Processes an account query to retrieve and display CPU usage statistics.
 def process_account_query(args, output_headers):
     allocation_id_url = ALLOCATION_ENDPOINT
     account = args["account"]
-    _start = args["_start"]
-    _end = args["_end"]
 
     header = account.split('_')[0]
     compute_resources = COMPUTE_RESOURCES_TABLE[MODE].get(header, '{} Compute'.format(header.upper()))
@@ -329,9 +336,11 @@ def process_account_query(args, output_headers):
         job_count, cpu_usage, account_usage = get_cpu_usage(args, account=account)
 
     if not args["default_start_used"]:
-        print('{} {} jobs, {:.2f} CPUHrs, {} SUs.'.format(output_headers['account'], job_count, cpu_usage, account_usage))
+        print('{} {} jobs, {:.2f} CPUHrs, {} SUs.'
+              .format(output_headers['account'], job_count, cpu_usage, account_usage))
     else:
-        print('{} {} jobs, {:.2f} CPUHrs, {} SUs used from an allocation of {} SUs.'.format(output_headers['account'], job_count, cpu_usage, account_usage, allocation))
+        print('{} {} jobs, {:.2f} CPUHrs, {} SUs used from an allocation of {} SUs.'
+              .format(output_headers['account'], job_count, cpu_usage, account_usage, allocation))
 
     if args["expand"]:
         user_url = ALLOCATION_USERS_ENDPOINT
@@ -359,7 +368,8 @@ def process_account_query(args, output_headers):
 
             percentage = color_fn("{:.2f}".format(percentage))
             print('\tUsage for USER {} in ACCOUNT {} [{}, {}]: {} jobs, {:.2f} CPUHrs, {} ({}%) SUs.'
-                  .format(user_name, account, _start, _end, user_jobs, user_cpu, user_usage, percentage))
+                  .format(user_name, account, to_timestring(args["start"]), to_timestring(args["end"]), 
+                          user_jobs, user_cpu, user_usage, percentage))
 
 def get_default_start():
     break_month = '06' if MODE == MODE_MYBRC else '10'
@@ -369,27 +379,35 @@ def get_default_start():
 
     return default_start
 
-def get_output_headers(user, account, _start, _end):
+def get_output_headers(user, account, start, end):
     output_headers = {}
     if user:
-        output_header = 'Usage for USER {} [{}, {}]:'.format(user, _start, _end)
+        output_header = 'Usage for USER {} [{}, {}]:'.format(
+            user, to_timestring(start), to_timestring(end))
         output_headers['user'] = output_header
 
     if account:
-        output_header = 'Usage for ACCOUNT {} [{}, {}]:'.format(account, _start, _end)
+        output_header = 'Usage for ACCOUNT {} [{}, {}]:'.format(
+            account, to_timestring(start), to_timestring(end))
         output_headers['account'] = output_header
     
     return output_headers
 
+# Handles requests for CPU usage statistics based on 
+# the specified output headers and arguments.
 def handle_requests(output_headers, args):
+    start = args["start"]
+    end = args["end"]
     for req_type in output_headers.keys():
         try:
-            if args["start"] > args["end"]:
-                print('ERR: Start time ({}) requested is after end time ({}).'.format(args["_start"], args["_end"]))
+            if start > end:
+                print('ERR: Start time ({}) requested is after end time ({}).'
+                      .format(to_timestring(start), to_timestring(end)))
                 exit(0)
 
-            if to_timestamp('2020-06-01', to_utc=True) > args["start"]:
-                print('INFO: Information might be inaccurate, for accurate information contact {} support ({}).'
+            if to_timestamp('2020-06-01', to_utc=True) > start:
+                print('INFO: Information might be inaccurate, \
+                      for accurate information contact {} support ({}).'
                     .format(SUPPORT_TEAM, SUPPORT_EMAIL))
 
             if req_type == 'user':
@@ -402,7 +420,8 @@ def handle_requests(output_headers, args):
                 process_account_query(args, output_headers)
 
         except urllib.error.URLError as e:
-            print('ERR: Could not connect to backend, contact {} Support ({}) if problem persists.'
+            print('ERR: Could not connect to backend, \
+                  contact {} Support ({}) if problem persists.'
                 .format(SUPPORT_TEAM, SUPPORT_EMAIL))
             if DEBUG:
                 print('__main__ ERR: {}'.format(e))
@@ -413,23 +432,20 @@ def handle_requests(output_headers, args):
 
 def check_usage():
     default_start = get_default_start()
-    user, account, expand, _start, _end = handle_parsing(default_start)
+    user, account, expand, start, end = handle_parsing(default_start)
 
-    default_start_used = _start == default_start
+    default_start_used = start == default_start
     calculate_project_start = default_start_used and account
 
     # convert all times to UTC
-    start = to_timestamp(_start, to_utc=True)  # utc start time stamp
-    end = to_timestamp(_end, to_utc=True)      # utc end time stamp
-    _start = to_timestring(start)              # utc start time string
-    _end = to_timestring(end)                  # utc end time string
+    start = to_timestamp(start, to_utc=True)  # utc start time stamp
+    end = to_timestamp(end, to_utc=True)      # utc end time stamp
 
     if calculate_project_start:
         target_start_date = get_project_start(account, user)  # local time string
 
         if target_start_date is not None:
             start = to_timestamp(target_start_date, to_utc=True)
-            _start = to_timestring(start)
 
         elif DEBUG:
             print('[get_account_start({})] ERR'.format(account))
@@ -444,12 +460,10 @@ def check_usage():
         "expand": expand,
         "start": start,
         "end": end,
-        "_start": _start,
-        "_end": _end,
         "default_start_used": default_start_used
     }
 
-    output_headers = get_output_headers(user, account, _start, _end)
+    output_headers = get_output_headers(user, account, start, end)
     handle_requests(output_headers, args)
 
 check_usage()
