@@ -398,11 +398,12 @@ def process_user_query():
         response = paginate_requests(user_allocation_url, {'user': user})
 
         for allocation in response:
-            allocation_account = allocation['project']
-            allocation_jobs, allocation_cpu, allocation_usage = get_cpu_usage(user, allocation_account)
+            if allocation['status'] != 'Removed':
+                allocation_account = allocation['project']
+                allocation_jobs, allocation_cpu, allocation_usage = get_cpu_usage(user, allocation_account)
 
-            print('\tUsage for USER {} in ACCOUNT {} [{}, {}]: {} jobs, {:.2f} CPUHrs, {} SUs.'
-                  .format(user, allocation_account, _start, _end, allocation_jobs, allocation_cpu, allocation_usage))
+                print('\tUsage for USER {} in ACCOUNT {} [{}, {}]: {} jobs, {:.2f} CPUHrs, {} SUs.'
+                    .format(user, allocation_account, _start, _end, allocation_jobs, allocation_cpu, allocation_usage))
 
 
 for req_type in output_headers.keys():
