@@ -284,12 +284,13 @@ def process_user_query(args, output_headers):
         response = paginate_requests(ALLOCATION_USERS_ENDPOINT, {'user': args["user"]})
 
         for allocation in response:
-            allocation_account = allocation['project']
-            allocation_jobs, allocation_cpu, allocation_usage = get_cpu_usage(args, user=args["user"], account=allocation_account)
+            if allocation['status'] != 'Removed':
+                allocation_account = allocation['project']
+                allocation_jobs, allocation_cpu, allocation_usage = get_cpu_usage(args, user=args["user"], account=allocation_account)
 
-            print('\tUsage for USER {} in ACCOUNT {} [{}, {}]: {} jobs, {:.2f} CPUHrs, {} SUs.'
-                  .format(args["user"], allocation_account, to_timestring(args["start"]), 
-                          to_timestring(args["end"]), allocation_jobs, allocation_cpu, allocation_usage))
+                print('\tUsage for USER {} in ACCOUNT {} [{}, {}]: {} jobs, {:.2f} CPUHrs, {} SUs.'
+                    .format(args["user"], allocation_account, to_timestring(args["start"]), 
+                            to_timestring(args["end"]), allocation_jobs, allocation_cpu, allocation_usage))
 
 # Processes an account query to retrieve and display CPU usage statistics.
 def process_account_query(args, output_headers):
