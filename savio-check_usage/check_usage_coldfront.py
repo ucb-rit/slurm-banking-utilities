@@ -400,9 +400,13 @@ def process_user_query():
         for allocation in response:
             allocation_account = allocation['project']
             allocation_jobs, allocation_cpu, allocation_usage = get_cpu_usage(user, allocation_account)
-
-            print('\tUsage for USER {} in ACCOUNT {} [{}, {}]: {} jobs, {:.2f} CPUHrs, {} SUs.'
-                  .format(user, allocation_account, _start, _end, allocation_jobs, allocation_cpu, allocation_usage))
+            prefix = '\t'
+            if allocation['status'] == 'Removed':
+                prefix += '(User removed from account) '
+            message = prefix + (
+                'Usage for USER {} in ACCOUNT {} [{}, {}]: {} jobs, {:.2f} CPUHrs, {} SUs.'.format(
+                    user, allocation_account, _start, _end, allocation_jobs, allocation_cpu, allocation_usage))
+            print(message)
 
 
 for req_type in output_headers.keys():
