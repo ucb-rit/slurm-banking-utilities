@@ -13,6 +13,10 @@ db. Refer to individual README.md files for details.
 - contains scripts to generate the complete `jobcomp.log` file by collecting
   data from slurmdb
 
+#### list_slurm_allowances.sh
+
+- a script to list core minutes and service units allocated to matching accounts
+
 #### sync-brcdb
 
 - contains scripts to clean up the inconsistencies MyBRC db and slurm db, which
